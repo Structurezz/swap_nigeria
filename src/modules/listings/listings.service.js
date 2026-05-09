@@ -1,4 +1,5 @@
 const Listing = require('../../models/Listing');
+const Category = require('../../models/Category');
 
 const SORT_MAP = {
   newest: { isBoosted: -1, createdAt: -1 },
@@ -99,4 +100,43 @@ const addImages = async (listingId, userId, imageUrls) => {
   return listing.toJSON();
 };
 
-module.exports = { createListing, getListing, updateListing, deleteListing, searchListings, getUserListings, addImages };
+const getHomeFeed = async () => {
+  const activeFilter = { status: 'active', expiresAt: { $gt: new Date() } };
+
+  const [categories, boosted, fresh] = await Promise.all([
+    Category.find().sort({ name: 1 }),
+    Listing.find({ ...activeFilter, isBoosted: true })
+      .populate('userId', 'fullName avatarUrl verification locationState')
+      .populate('categoryId', 'name slug icon')
+      .sort({ createdAt: -1 })
+      .limit(8),
+    Listing.find(activeFilter)
+      .populate('userId', 'fullName avatarUrl verification locationState')
+      .populate('categoryId', 'name slug icon')
+      .sort({ createdAt: -1 })
+      .limit(6),
+  ]);
+
+  // Fetch top 8 listings per category in parallel
+  const categoryFeeds = await Promise.all(
+    categories.map(async (cat) => {
+      const listings = await Listing.find({ ...activeFilter, categoryId: cat._id })
+        .populate('userId', 'fullName avatarUrl verification locationState')
+        .populate('categoryId', 'name slug icon')
+        .sort({ isBoosted: -1, viewCount: -1, createdAt: -1 })
+        .limit(8);
+      return {
+        category: cat.toJSON(),
+        listings: listings.map(l => l.toJSON()),
+      };
+    })
+  );
+
+  return {
+    boosted: boosted.map(l => l.toJSON()),
+    fresh: fresh.map(l => l.toJSON()),
+    categories: categoryFeeds.filter(c => c.listings.length > 0),
+  };
+};
+
+module.exports = { createListing, getListing, updateListing, deleteListing, searchListings, getUserListings, addImages, getHomeFeed };

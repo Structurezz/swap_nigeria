@@ -4,9 +4,11 @@ const { validate } = require('../../middleware/validate');
 const { createListingSchema, updateListingSchema } = require('./listings.schema');
 const {
   createListingController, getListingController, updateListingController,
-  deleteListingController, searchListingsController, getMyListingsController, uploadImagesController,
+  deleteListingController, searchListingsController, getMyListingsController,
+  uploadImagesController, getHomeFeedController,
 } = require('./listings.controller');
 
+router.get('/home-feed', getHomeFeedController);
 router.get('/', searchListingsController);
 router.post('/', auth, validate(createListingSchema), createListingController);
 router.get('/mine', auth, getMyListingsController);

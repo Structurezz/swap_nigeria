@@ -1,4 +1,4 @@
-const { createListing, getListing, updateListing, deleteListing, searchListings, getUserListings, addImages } = require('./listings.service');
+const { createListing, getListing, updateListing, deleteListing, searchListings, getUserListings, addImages, getHomeFeed } = require('./listings.service');
 const { uploadMultiple, uploadToGridFS, fileUrl } = require('../../utils/upload');
 
 const createListingController = async (req, res, next) => {
@@ -61,6 +61,13 @@ const uploadImagesController = [
   },
 ];
 
+const getHomeFeedController = async (req, res, next) => {
+  try {
+    const result = await getHomeFeed();
+    res.json({ data: result });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   createListingController,
   getListingController,
@@ -69,4 +76,5 @@ module.exports = {
   searchListingsController,
   getMyListingsController,
   uploadImagesController,
+  getHomeFeedController,
 };

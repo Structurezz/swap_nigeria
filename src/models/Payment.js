@@ -7,7 +7,7 @@ const paymentSchema = new mongoose.Schema(
     listingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Listing' },
     paymentType: {
       type: String,
-      enum: ['boost', 'verification', 'escrow', 'fee'],
+      enum: ['topup', 'boost', 'verification', 'escrow', 'fee'],
       required: true,
     },
     amountKobo: { type: Number, required: true },

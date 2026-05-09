@@ -30,6 +30,7 @@ const userSchema = new mongoose.Schema(
     ratingAvg: { type: Number, default: 0 },
     ratingCount: { type: Number, default: 0 },
     isAdmin: { type: Boolean, default: false },
+    walletBalance: { type: Number, default: 0 }, // stored in kobo
     referralCode: { type: String, unique: true, sparse: true, index: true },
     referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     referralCount: { type: Number, default: 0 },

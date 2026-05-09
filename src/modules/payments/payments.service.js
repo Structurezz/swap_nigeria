@@ -29,9 +29,10 @@ const paystackHeaders = () => ({
   'Content-Type': 'application/json',
 });
 
-// ─── Generic Paystack init ────────────────────────────────────────────────────
+// ─── Internal: create a Paystack checkout session ─────────────────────────────
 const _paystackInit = async ({ payment, email, metadata }) => {
   if (!config.PAYSTACK_SECRET_KEY) {
+    // Dev mock — auto-credit the topup on same request
     return {
       paymentId: payment._id.toString(),
       authorizationUrl: `${config.FRONTEND_URL}/wallet?mock_ref=${payment._id}`,
@@ -46,6 +47,7 @@ const _paystackInit = async ({ payment, email, metadata }) => {
       email,
       amount: payment.amountKobo,
       reference: payment._id.toString(),
+      callback_url: `${config.FRONTEND_URL}/wallet?ref=${payment._id}`,
       metadata,
     },
     { headers: paystackHeaders() }
@@ -61,7 +63,115 @@ const _paystackInit = async ({ payment, email, metadata }) => {
   };
 };
 
-// ─── Legacy: escrow payment (requires swapId) ─────────────────────────────────
+// ─── Internal: deduct from wallet atomically, throw if insufficient ───────────
+const _deductWallet = async (userId, amountKobo, session) => {
+  const user = await User.findOneAndUpdate(
+    { _id: userId, walletBalance: { $gte: amountKobo } },
+    { $inc: { walletBalance: -amountKobo } },
+    { new: true, session }
+  );
+  if (!user) {
+    throw Object.assign(
+      new Error(`Insufficient wallet balance. Please top up your wallet.`),
+      { status: 402 }
+    );
+  }
+  return user;
+};
+
+// ─── Wallet top-up via Paystack ───────────────────────────────────────────────
+const initiateTopup = async (userId, amountKobo, email) => {
+  if (!amountKobo || amountKobo < 10000) {
+    throw Object.assign(new Error('Minimum top-up is ₦100'), { status: 400 });
+  }
+
+  const user = await User.findById(userId);
+  if (!user) throw Object.assign(new Error('User not found'), { status: 404 });
+
+  const payment = await Payment.create({
+    userId,
+    amountKobo,
+    paymentType: 'topup',
+    status: 'pending',
+  });
+
+  return _paystackInit({
+    payment,
+    email: email || user.email,
+    metadata: { userId, paymentType: 'topup' },
+  });
+};
+
+// ─── Pay for verification from wallet ────────────────────────────────────────
+const initiateVerification = async (userId) => {
+  const user = await User.findById(userId);
+  if (!user) throw Object.assign(new Error('User not found'), { status: 404 });
+  if (user.verification === 'verified') {
+    throw Object.assign(new Error('Account already verified'), { status: 409 });
+  }
+
+  // Deduct from wallet
+  await _deductWallet(userId, VERIFICATION_AMOUNT_KOBO);
+
+  // Record payment as success immediately (wallet deduction = payment)
+  const payment = await Payment.create({
+    userId,
+    amountKobo: VERIFICATION_AMOUNT_KOBO,
+    paymentType: 'verification',
+    status: 'success',
+  });
+
+  // Fulfil instantly
+  await User.findByIdAndUpdate(userId, {
+    verification: 'verified',
+    verifiedAt: new Date(),
+  });
+
+  // Return fresh user balance
+  const updated = await User.findById(userId);
+  return {
+    payment: payment.toJSON(),
+    walletBalance: updated.walletBalance,
+    message: 'Account verified successfully!',
+  };
+};
+
+// ─── Pay for listing boost from wallet ───────────────────────────────────────
+const initiateBoost = async (userId, listingId, plan) => {
+  const planData = BOOST_PLANS[plan];
+  if (!planData) throw Object.assign(new Error('Invalid boost plan. Use 7d or 30d'), { status: 400 });
+
+  const listing = await Listing.findById(listingId);
+  if (!listing) throw Object.assign(new Error('Listing not found'), { status: 404 });
+  if (listing.userId.toString() !== userId) throw Object.assign(new Error('Not your listing'), { status: 403 });
+
+  // Deduct from wallet
+  await _deductWallet(userId, planData.amountKobo);
+
+  // Record payment as success immediately
+  const payment = await Payment.create({
+    userId,
+    listingId,
+    amountKobo: planData.amountKobo,
+    paymentType: 'boost',
+    status: 'success',
+    meta: { plan, days: planData.days },
+  });
+
+  // Activate boost
+  const boostExpires = new Date(Date.now() + planData.days * 24 * 60 * 60 * 1000);
+  await Listing.findByIdAndUpdate(listingId, { isBoosted: true, boostExpires });
+
+  const updated = await User.findById(userId);
+  return {
+    payment: payment.toJSON(),
+    walletBalance: updated.walletBalance,
+    boostExpires,
+    message: `Listing boosted for ${planData.days} days!`,
+  };
+};
+
+// ─── Legacy: escrow payment (still uses Paystack directly) ────────────────────
 const initializePayment = async (userId, data) => {
   const { swapId, amountKobo, email, paymentType = 'escrow' } = data;
 
@@ -82,69 +192,26 @@ const initializePayment = async (userId, data) => {
     status: 'pending',
   });
 
+  const user = await User.findById(userId);
   return _paystackInit({
     payment,
-    email,
+    email: email || user?.email,
     metadata: { swapId, userId, paymentType },
   });
 };
 
-// ─── Boost a listing ──────────────────────────────────────────────────────────
-const initiateBoost = async (userId, listingId, plan, email) => {
-  const planData = BOOST_PLANS[plan];
-  if (!planData) throw Object.assign(new Error('Invalid boost plan. Use 7d or 30d'), { status: 400 });
-
-  const listing = await Listing.findById(listingId);
-  if (!listing) throw Object.assign(new Error('Listing not found'), { status: 404 });
-  if (listing.userId.toString() !== userId) throw Object.assign(new Error('Not your listing'), { status: 403 });
-
-  const payment = await Payment.create({
-    userId,
-    listingId,
-    amountKobo: planData.amountKobo,
-    paymentType: 'boost',
-    status: 'pending',
-    meta: { plan, days: planData.days },
-  });
-
-  return _paystackInit({
-    payment,
-    email,
-    metadata: { listingId, userId, paymentType: 'boost', plan },
-  });
-};
-
-// ─── Initiate account verification ───────────────────────────────────────────
-const initiateVerification = async (userId, email) => {
-  const user = await User.findById(userId);
-  if (!user) throw Object.assign(new Error('User not found'), { status: 404 });
-  if (user.verification === 'verified') {
-    throw Object.assign(new Error('Account already verified'), { status: 409 });
-  }
-
-  const payment = await Payment.create({
-    userId,
-    amountKobo: VERIFICATION_AMOUNT_KOBO,
-    paymentType: 'verification',
-    status: 'pending',
-  });
-
-  return _paystackInit({
-    payment,
-    email: email || user.email,
-    metadata: { userId, paymentType: 'verification' },
-  });
-};
-
-// ─── Verify + fulfil payment ──────────────────────────────────────────────────
+// ─── Verify a Paystack payment (topup callback / webhook) ────────────────────
 const verifyPayment = async (reference) => {
   const payment = await Payment.findOne({
-    $or: [{ paystackRef: reference }, { _id: reference.replace('mock_', '') }],
+    $or: [
+      { paystackRef: reference },
+      { _id: reference.replace('mock_', '') },
+    ],
   });
   if (!payment) throw Object.assign(new Error('Payment not found'), { status: 404 });
-
   if (payment.status === 'success') return payment.toJSON(); // idempotent
 
+  // Verify with Paystack (skip in mock mode)
   if (config.PAYSTACK_SECRET_KEY && !reference.startsWith('mock_')) {
     const paystackRes = await axios.get(
       `${PAYSTACK_BASE}/transaction/verify/${reference}`,
@@ -162,20 +229,10 @@ const verifyPayment = async (reference) => {
   payment.status = 'success';
   await payment.save();
 
-  // ── Post-payment fulfillment ──────────────────────────────────────────────
-  if (payment.paymentType === 'boost' && payment.listingId) {
-    const days = payment.meta?.days || 7;
-    const boostExpires = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-    await Listing.findByIdAndUpdate(payment.listingId, {
-      isBoosted: true,
-      boostExpires,
-    });
-  }
-
-  if (payment.paymentType === 'verification') {
+  // ── Fulfillment ───────────────────────────────────────────────────────────
+  if (payment.paymentType === 'topup') {
     await User.findByIdAndUpdate(payment.userId, {
-      verification: 'verified',
-      verifiedAt: new Date(),
+      $inc: { walletBalance: payment.amountKobo },
     });
   }
 
@@ -194,7 +251,7 @@ const getPaymentHistory = async (userId, page = 1, limit = 20) => {
   page = parseInt(page) || 1;
   limit = parseInt(limit) || 20;
 
-  const [payments, total] = await Promise.all([
+  const [payments, total, user] = await Promise.all([
     Payment.find({ userId })
       .populate('swapId', 'status')
       .populate('listingId', 'title')
@@ -202,6 +259,7 @@ const getPaymentHistory = async (userId, page = 1, limit = 20) => {
       .skip((page - 1) * limit)
       .limit(limit),
     Payment.countDocuments({ userId }),
+    User.findById(userId).select('walletBalance'),
   ]);
 
   return {
@@ -209,6 +267,7 @@ const getPaymentHistory = async (userId, page = 1, limit = 20) => {
     total,
     page,
     pages: Math.ceil(total / limit),
+    walletBalance: user?.walletBalance || 0,
   };
 };
 
@@ -229,6 +288,7 @@ const getBoostPlans = () => Object.entries(BOOST_PLANS).map(([id, p]) => ({ id, 
 
 module.exports = {
   initializePayment,
+  initiateTopup,
   initiateBoost,
   initiateVerification,
   verifyPayment,
@@ -236,4 +296,5 @@ module.exports = {
   handleWebhook,
   getBoostPlans,
   VERIFICATION_AMOUNT_KOBO,
+  BOOST_PLANS,
 };

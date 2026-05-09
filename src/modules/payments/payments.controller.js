@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const {
-  initializePayment, initiateBoost, initiateVerification,
+  initializePayment, initiateTopup, initiateBoost, initiateVerification,
   verifyPayment, getPaymentHistory, handleWebhook, getBoostPlans,
 } = require('./payments.service');
 
@@ -18,19 +18,25 @@ const initializePaymentController = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const topupController = async (req, res, next) => {
+  try {
+    const { amountKobo, email } = req.body;
+    const result = await initiateTopup(req.user.id, amountKobo, email || req.user.email);
+    res.json({ data: result });
+  } catch (err) { next(err); }
+};
+
 const boostListingController = async (req, res, next) => {
   try {
     const { plan } = req.body;
-    const email = req.user.email || req.body.email;
-    const result = await initiateBoost(req.user.id, req.params.listingId, plan, email);
+    const result = await initiateBoost(req.user.id, req.params.listingId, plan);
     res.json({ data: result });
   } catch (err) { next(err); }
 };
 
 const verifyAccountController = async (req, res, next) => {
   try {
-    const email = req.user.email || req.body.email;
-    const result = await initiateVerification(req.user.id, email);
+    const result = await initiateVerification(req.user.id);
     res.json({ data: result });
   } catch (err) { next(err); }
 };
@@ -71,6 +77,7 @@ const webhookController = async (req, res, next) => {
 
 module.exports = {
   initializePaymentController,
+  topupController,
   boostListingController,
   verifyAccountController,
   verifyPaymentController,

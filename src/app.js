@@ -6,6 +6,17 @@ const morgan = require('morgan');
 const { errorHandler } = require('./middleware/errorHandler');
 const { generalLimiter } = require('./middleware/rateLimiter');
 
+// Register all models upfront so populate() works across all routes
+require('./models/User');
+require('./models/Category');
+require('./models/Listing');
+require('./models/Swap');
+require('./models/Conversation');
+require('./models/Message');
+require('./models/Review');
+require('./models/Payment');
+require('./models/OtpCode');
+
 let config;
 try {
   config = require('./config/env');

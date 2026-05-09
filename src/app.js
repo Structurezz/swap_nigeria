@@ -39,7 +39,8 @@ if (config.NODE_ENV !== 'test') {
 app.use('/api', generalLimiter);
 
 // Routes
-app.use('/api/auth', require('./modules/auth/auth.routes'));
+app.use('/api/auth',       require('./modules/auth/auth.routes'));
+app.use('/api/categories', require('./modules/categories/categories.routes'));
 app.use('/api/users', require('./modules/users/users.routes'));
 app.use('/api/listings', require('./modules/listings/listings.routes'));
 app.use('/api/matches', require('./modules/matches/matches.routes'));

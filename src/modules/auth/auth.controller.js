@@ -1,39 +1,35 @@
-const { sendOtp, verifyOtpAndLogin, refreshTokenService, logout } = require('./auth.service');
+const {
+  sendOtp, verifyOtpAndLogin,
+  register, loginWithEmail,
+  forgotPassword, resetPassword, changePassword,
+  deleteAccount,
+  refreshTokenService, logout,
+} = require('./auth.service');
 
-const sendOtpController = async (req, res, next) => {
+const handle = (fn) => async (req, res, next) => {
   try {
-    const result = await sendOtp(req.body.phone);
+    const result = await fn(req, res);
     res.json({ data: result });
   } catch (err) {
     next(err);
   }
 };
 
-const verifyOtpController = async (req, res, next) => {
-  try {
-    const result = await verifyOtpAndLogin(req.body.phone, req.body.code);
-    res.json({ data: result });
-  } catch (err) {
-    next(err);
-  }
-};
+const sendOtpController       = handle((req) => sendOtp(req.body.phone));
+const verifyOtpController     = handle((req) => verifyOtpAndLogin(req.body.phone, req.body.code));
+const registerController      = handle((req) => register(req.body));
+const loginController         = handle((req) => loginWithEmail(req.body));
+const forgotPasswordController= handle((req) => forgotPassword(req.body.email));
+const resetPasswordController = handle((req) => resetPassword(req.body));
+const changePasswordController= handle((req) => changePassword(req.user.id, req.body));
+const deleteAccountController = handle((req) => deleteAccount(req.user.id, req.body.password));
+const refreshController       = handle((req) => refreshTokenService(req.body.refreshToken));
+const logoutController        = handle((req) => logout(req.body.refreshToken));
 
-const refreshController = async (req, res, next) => {
-  try {
-    const result = await refreshTokenService(req.body.refreshToken);
-    res.json({ data: result });
-  } catch (err) {
-    next(err);
-  }
+module.exports = {
+  sendOtpController, verifyOtpController,
+  registerController, loginController,
+  forgotPasswordController, resetPasswordController, changePasswordController,
+  deleteAccountController,
+  refreshController, logoutController,
 };
-
-const logoutController = async (req, res, next) => {
-  try {
-    const result = await logout(req.body.refreshToken);
-    res.json({ data: result });
-  } catch (err) {
-    next(err);
-  }
-};
-
-module.exports = { sendOtpController, verifyOtpController, refreshController, logoutController };

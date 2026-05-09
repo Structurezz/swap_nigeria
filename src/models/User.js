@@ -2,7 +2,9 @@ const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema(
   {
-    phone: { type: String, unique: true, required: true, index: true },
+    phone: { type: String, unique: true, sparse: true, index: true },
+    email: { type: String, unique: true, sparse: true, lowercase: true, index: true },
+    passwordHash: { type: String },
     fullName: { type: String, maxlength: 120 },
     username: { type: String, unique: true, sparse: true, maxlength: 60 },
     bio: String,

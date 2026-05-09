@@ -1,12 +1,35 @@
 const router = require('express').Router();
 const { validate } = require('../../middleware/validate');
-const { sendOtpSchema, verifyOtpSchema, refreshSchema, logoutSchema } = require('./auth.schema');
-const { sendOtpController, verifyOtpController, refreshController, logoutController } = require('./auth.controller');
+const { auth } = require('../../middleware/auth');
 const { otpLimiter } = require('../../middleware/rateLimiter');
+const {
+  sendOtpSchema, verifyOtpSchema,
+  registerSchema, loginSchema,
+  forgotPasswordSchema, resetPasswordSchema, changePasswordSchema,
+  refreshSchema, logoutSchema,
+} = require('./auth.schema');
+const {
+  sendOtpController, verifyOtpController,
+  registerController, loginController,
+  forgotPasswordController, resetPasswordController, changePasswordController,
+  deleteAccountController,
+  refreshController, logoutController,
+} = require('./auth.controller');
 
-router.post('/send-otp', otpLimiter, validate(sendOtpSchema), sendOtpController);
+// Phone OTP
+router.post('/send-otp',  otpLimiter, validate(sendOtpSchema),  sendOtpController);
 router.post('/verify-otp', validate(verifyOtpSchema), verifyOtpController);
+
+// Email / Password
+router.post('/register',        validate(registerSchema),       registerController);
+router.post('/login',           validate(loginSchema),          loginController);
+router.post('/forgot-password', validate(forgotPasswordSchema), forgotPasswordController);
+router.post('/reset-password',  validate(resetPasswordSchema),  resetPasswordController);
+router.put('/change-password',  auth, validate(changePasswordSchema), changePasswordController);
+router.delete('/account',       auth, deleteAccountController);
+
+// Token management
 router.post('/refresh', validate(refreshSchema), refreshController);
-router.post('/logout', validate(logoutSchema), logoutController);
+router.post('/logout',  validate(logoutSchema),  logoutController);
 
 module.exports = router;

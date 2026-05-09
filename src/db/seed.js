@@ -1,12 +1,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 
-let config;
-try {
-  config = require('../config/env');
-} catch (e) {
-  config = { MONGODB_URI: process.env.MONGODB_URI };
-}
+const config = { MONGODB_URI: process.env.MONGODB_URI };
 
 const User = require('../models/User');
 const Category = require('../models/Category');

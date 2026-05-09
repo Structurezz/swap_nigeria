@@ -10,7 +10,7 @@ const paymentSchema = new mongoose.Schema(
       enum: ['boost', 'verification', 'escrow', 'fee'],
       required: true,
     },
-    amountNgn: { type: Number, required: true },
+    amountKobo: { type: Number, required: true },
     paystackRef: { type: String, unique: true, sparse: true },
     paystackStatus: String,
     status: {

@@ -1,4 +1,4 @@
-const { getProfile, updateProfile, updateAvatar, getPublicProfile } = require('./users.service');
+const { getProfile, updateProfile, updateAvatar, getPublicProfile, getMyReferrals, applyReferral } = require('./users.service');
 const { uploadSingle, uploadToGridFS, fileUrl } = require('../../utils/upload');
 
 const getMeController = async (req, res, next) => {
@@ -36,4 +36,21 @@ const getPublicProfileController = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getMeController, updateMeController, uploadAvatarController, getPublicProfileController };
+const getMyReferralsController = async (req, res, next) => {
+  try {
+    const result = await getMyReferrals(req.user.id);
+    res.json({ data: result });
+  } catch (err) { next(err); }
+};
+
+const applyReferralController = async (req, res, next) => {
+  try {
+    const result = await applyReferral(req.user.id, req.body.code);
+    res.json({ data: result });
+  } catch (err) { next(err); }
+};
+
+module.exports = {
+  getMeController, updateMeController, uploadAvatarController,
+  getPublicProfileController, getMyReferralsController, applyReferralController,
+};

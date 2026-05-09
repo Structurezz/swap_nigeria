@@ -1,5 +1,8 @@
 const crypto = require('crypto');
-const { initializePayment, verifyPayment, getPaymentHistory, handleWebhook } = require('./payments.service');
+const {
+  initializePayment, initiateBoost, initiateVerification,
+  verifyPayment, getPaymentHistory, handleWebhook, getBoostPlans,
+} = require('./payments.service');
 
 let config;
 try {
@@ -11,6 +14,23 @@ try {
 const initializePaymentController = async (req, res, next) => {
   try {
     const result = await initializePayment(req.user.id, req.body);
+    res.json({ data: result });
+  } catch (err) { next(err); }
+};
+
+const boostListingController = async (req, res, next) => {
+  try {
+    const { plan } = req.body;
+    const email = req.user.email || req.body.email;
+    const result = await initiateBoost(req.user.id, req.params.listingId, plan, email);
+    res.json({ data: result });
+  } catch (err) { next(err); }
+};
+
+const verifyAccountController = async (req, res, next) => {
+  try {
+    const email = req.user.email || req.body.email;
+    const result = await initiateVerification(req.user.id, email);
     res.json({ data: result });
   } catch (err) { next(err); }
 };
@@ -29,23 +49,32 @@ const getHistoryController = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const getBoostPlansController = async (req, res) => {
+  res.json({ data: getBoostPlans() });
+};
+
 const webhookController = async (req, res, next) => {
   try {
-    // Verify Paystack signature
     if (config.PAYSTACK_SECRET_KEY) {
       const hash = crypto
         .createHmac('sha512', config.PAYSTACK_SECRET_KEY)
         .update(JSON.stringify(req.body))
         .digest('hex');
-
       if (hash !== req.headers['x-paystack-signature']) {
         return res.status(401).json({ error: 'Invalid signature' });
       }
     }
-
     await handleWebhook(req.body.event, req.body.data);
     res.sendStatus(200);
   } catch (err) { next(err); }
 };
 
-module.exports = { initializePaymentController, verifyPaymentController, getHistoryController, webhookController };
+module.exports = {
+  initializePaymentController,
+  boostListingController,
+  verifyAccountController,
+  verifyPaymentController,
+  getHistoryController,
+  getBoostPlansController,
+  webhookController,
+};

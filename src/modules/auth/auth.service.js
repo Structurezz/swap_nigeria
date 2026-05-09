@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const redisClient = require('../../config/redis');
 const User = require('../../models/User');
 const { generateOtp, storeOtp, verifyOtp } = require('../../utils/otp');
@@ -12,6 +13,8 @@ try {
 } catch (e) {
   config = { NODE_ENV: process.env.NODE_ENV || 'development' };
 }
+
+const generateReferralCode = () => crypto.randomBytes(4).toString('hex').toUpperCase();
 
 const OTP_RATE_LIMIT_PREFIX = 'otp_limit:';
 const REFRESH_TOKEN_PREFIX = 'refresh:';
@@ -64,7 +67,7 @@ const verifyOtpAndLogin = async (phone, code) => {
   const isNewUser = !user;
 
   if (!user) {
-    user = await User.create({ phone, status: 'active' });
+    user = await User.create({ phone, status: 'active', referralCode: generateReferralCode() });
   } else if (user.status === 'suspended') {
     throw Object.assign(new Error('Account suspended. Contact support'), { status: 403 });
   } else if (user.status === 'pending') {
@@ -93,6 +96,7 @@ const register = async ({ email, password, fullName, phone }) => {
     fullName,
     phone: phone || undefined,
     status: 'active',
+    referralCode: generateReferralCode(),
   });
 
   const { accessToken, refreshToken } = await buildTokens(user);

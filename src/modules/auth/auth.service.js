@@ -15,18 +15,22 @@ const OTP_RATE_LIMIT_PREFIX = 'otp_limit:';
 const REFRESH_TOKEN_PREFIX = 'refresh:';
 
 const sendOtp = async (phone) => {
-  // Redis rate limit check: 3 per 10 min per phone
-  const rateLimitKey = `${OTP_RATE_LIMIT_PREFIX}${phone}`;
-  const count = await redisClient.incr(rateLimitKey);
+  // Redis rate limit check: 3 per 10 min per phone (skipped if Redis unavailable)
+  try {
+    const rateLimitKey = `${OTP_RATE_LIMIT_PREFIX}${phone}`;
+    const count = await redisClient.incr(rateLimitKey);
 
-  if (count === 1) {
-    // Set expiry only on first increment
-    await redisClient.expire(rateLimitKey, 10 * 60);
-  }
+    if (count === 1) {
+      await redisClient.expire(rateLimitKey, 10 * 60);
+    }
 
-  if (count > 3) {
-    const ttl = await redisClient.ttl(rateLimitKey);
-    throw Object.assign(new Error(`Too many OTP requests. Try again in ${Math.ceil(ttl / 60)} minutes`), { status: 429 });
+    if (count > 3) {
+      const ttl = await redisClient.ttl(rateLimitKey);
+      throw Object.assign(new Error(`Too many OTP requests. Try again in ${Math.ceil(ttl / 60)} minutes`), { status: 429 });
+    }
+  } catch (err) {
+    if (err.status === 429) throw err; // re-throw rate limit errors
+    console.warn('Redis unavailable, skipping OTP rate limit:', err.message);
   }
 
   const code = generateOtp();
@@ -51,7 +55,7 @@ const verifyOtpAndLogin = async (phone, code) => {
   }
 
   // Reset rate limit on success
-  await redisClient.del(`${OTP_RATE_LIMIT_PREFIX}${phone}`);
+  try { await redisClient.del(`${OTP_RATE_LIMIT_PREFIX}${phone}`); } catch (_) {}
 
   // Upsert user
   let user = await User.findOne({ phone });
@@ -77,7 +81,7 @@ const verifyOtpAndLogin = async (phone, code) => {
 
   // Store refresh token in Redis (7 days)
   const refreshKey = `${REFRESH_TOKEN_PREFIX}${user._id}`;
-  await redisClient.setex(refreshKey, 7 * 24 * 60 * 60, refreshToken);
+  try { await redisClient.setex(refreshKey, 7 * 24 * 60 * 60, refreshToken); } catch (_) {}
 
   return {
     accessToken,
@@ -95,12 +99,16 @@ const refreshTokenService = async (token) => {
     throw Object.assign(new Error('Invalid refresh token'), { status: 401 });
   }
 
-  // Check Redis has this refresh token
+  // Check Redis has this refresh token (skip check if Redis unavailable)
   const refreshKey = `${REFRESH_TOKEN_PREFIX}${payload.id}`;
-  const storedToken = await redisClient.get(refreshKey);
-
-  if (!storedToken || storedToken !== token) {
-    throw Object.assign(new Error('Refresh token not found or revoked'), { status: 401 });
+  try {
+    const storedToken = await redisClient.get(refreshKey);
+    if (storedToken && storedToken !== token) {
+      throw Object.assign(new Error('Refresh token revoked'), { status: 401 });
+    }
+  } catch (err) {
+    if (err.status === 401) throw err;
+    console.warn('Redis unavailable, skipping refresh token check:', err.message);
   }
 
   // Verify user still exists and is active

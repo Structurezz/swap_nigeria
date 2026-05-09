@@ -1,4 +1,8 @@
-const { proposeSwap, getSwap, respondToSwap, setMeetup, confirmCompletion, raiseDispute, getUserSwaps } = require('./swaps.service');
+const {
+  proposeSwap, getSwap, respondToSwap, setMeetup,
+  payEscrowDeposit, confirmCompletion, raiseDispute, getUserSwaps,
+  ESCROW_DEPOSIT_KOBO, ESCROW_REFUND_KOBO, ESCROW_PLATFORM_FEE,
+} = require('./swaps.service');
 
 const proposeSwapController = async (req, res, next) => {
   try {
@@ -28,6 +32,26 @@ const setMeetupController = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const escrowDepositController = async (req, res, next) => {
+  try {
+    const swap = await payEscrowDeposit(req.params.id, req.user.id);
+    res.json({ data: swap });
+  } catch (err) { next(err); }
+};
+
+const escrowInfoController = (req, res) => {
+  res.json({
+    data: {
+      depositKobo:   ESCROW_DEPOSIT_KOBO,
+      refundKobo:    ESCROW_REFUND_KOBO,
+      platformFeeKobo: ESCROW_PLATFORM_FEE,
+      depositNgn:    ESCROW_DEPOSIT_KOBO / 100,
+      refundNgn:     ESCROW_REFUND_KOBO  / 100,
+      platformFeeNgn: ESCROW_PLATFORM_FEE / 100,
+    },
+  });
+};
+
 const confirmController = async (req, res, next) => {
   try {
     const swap = await confirmCompletion(req.params.id, req.user.id);
@@ -49,4 +73,8 @@ const getMySwapsController = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { proposeSwapController, getSwapController, respondController, setMeetupController, confirmController, disputeController, getMySwapsController };
+module.exports = {
+  proposeSwapController, getSwapController, respondController,
+  setMeetupController, escrowDepositController, escrowInfoController,
+  confirmController, disputeController, getMySwapsController,
+};

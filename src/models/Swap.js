@@ -8,9 +8,19 @@ const swapSchema = new mongoose.Schema(
     receiverListing: { type: mongoose.Schema.Types.ObjectId, ref: 'Listing' },
     proposalNote: String,
     agreedValue: Number,
+    swapType: {
+      type: String,
+      enum: ['goods_for_goods', 'goods_for_service', 'service_for_goods', 'service_for_service'],
+      default: 'goods_for_goods',
+    },
     meetupLocation: String,
     meetupScheduled: Date,
     escrowActive: { type: Boolean, default: false },
+    escrowDepositKobo: { type: Number, default: 100000 }, // ₦1,000 per party
+    initiatorDepositPaid: { type: Boolean, default: false },
+    receiverDepositPaid: { type: Boolean, default: false },
+    escrowInitiatedAt: Date,
+    escrowReleasedAt: Date,
     escrowFeeNgn: Number,
     status: {
       type: String,
@@ -24,6 +34,8 @@ const swapSchema = new mongoose.Schema(
     disputeReason: String,
     disputeRaisedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     disputeResolvedAt: Date,
+    disputeAdminNote: String,
+    disputeResolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   {
     timestamps: true,

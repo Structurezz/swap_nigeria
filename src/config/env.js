@@ -14,11 +14,8 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES: z.string().default('15m'),
   JWT_REFRESH_EXPIRES: z.string().default('7d'),
 
-  SMTP_HOST: z.string().default('mail.orizu.online'),
-  SMTP_PORT: z.string().default('465'),
-  SMTP_USER: z.string().default('noreply@orizu.online'),
-  SMTP_PASS: z.string().optional().default(''),
-  SMTP_FROM: z.string().default('noreply@orizu.online'),
+  RESEND_API_KEY: z.string().optional().default(''),
+  RESEND_FROM:    z.string().default('SwapNaija <noreply@usebarter.online>'),
 
   CLOUDINARY_CLOUD_NAME: z.string().optional().default(''),
   CLOUDINARY_API_KEY: z.string().optional().default(''),

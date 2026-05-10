@@ -1,44 +1,38 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 let config;
 try {
   config = require('../config/env');
 } catch (e) {
   config = {
-    SMTP_HOST: process.env.SMTP_HOST,
-    SMTP_PORT: process.env.SMTP_PORT,
-    SMTP_USER: process.env.SMTP_USER,
-    SMTP_PASS: process.env.SMTP_PASS,
-    SMTP_FROM: process.env.SMTP_FROM,
-    NODE_ENV: process.env.NODE_ENV || 'development',
+    RESEND_API_KEY: process.env.RESEND_API_KEY || '',
+    RESEND_FROM:    process.env.RESEND_FROM    || 'SwapNaija <noreply@usebarter.online>',
+    NODE_ENV:       process.env.NODE_ENV       || 'development',
   };
 }
 
-const createTransport = () =>
-  nodemailer.createTransport({
-    host: config.SMTP_HOST || 'mail.orizu.online',
-    port: parseInt(config.SMTP_PORT || '465'),
-    secure: parseInt(config.SMTP_PORT || '465') === 465,
-    auth: {
-      user: config.SMTP_USER || 'noreply@orizu.online',
-      pass: config.SMTP_PASS,
-    },
-  });
+const getClient = () => new Resend(config.RESEND_API_KEY);
+const FROM = () => config.RESEND_FROM || 'SwapNaija <noreply@usebarter.online>';
 
 const sendEmail = async ({ to, subject, html, text }) => {
-  if (!config.SMTP_PASS) {
-    console.warn(`[EMAIL] No SMTP_PASS set. Would send to ${to}: ${subject}`);
+  if (!config.RESEND_API_KEY) {
+    console.warn(`[EMAIL] No RESEND_API_KEY set. Would send to ${to}: ${subject}`);
     return;
   }
 
-  const transporter = createTransport();
-  await transporter.sendMail({
-    from: `"SwapNaija" <${config.SMTP_FROM || config.SMTP_USER || 'noreply@orizu.online'}>`,
-    to,
+  const { data, error } = await getClient().emails.send({
+    from:    FROM(),
+    to:      Array.isArray(to) ? to : [to],
     subject,
     html,
     text,
   });
+
+  if (error) {
+    throw new Error(`Resend error: ${error.message || JSON.stringify(error)}`);
+  }
+
+  return data;
 };
 
 const sendOtpEmail = async (to, code) => {

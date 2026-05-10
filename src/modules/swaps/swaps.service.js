@@ -56,7 +56,7 @@ const _refundDeposit = async (userId, swapId, reason = 'escrow_cancelled_refund'
 
 // ─── Propose swap ─────────────────────────────────────────────────────────────
 const proposeSwap = async (initiatorId, data) => {
-  const { receiverId, initiatorListing, receiverListing, proposalNote, agreedValue } = data;
+  const { receiverId, initiatorListing, receiverListing, proposalNote, agreedValue, topUpAmountKobo, topUpPayerRole } = data;
 
   if (initiatorId === receiverId) {
     throw Object.assign(new Error('Cannot propose swap to yourself'), { status: 400 });
@@ -80,6 +80,8 @@ const proposeSwap = async (initiatorId, data) => {
     initiatorListing, receiverListing,
     proposalNote, agreedValue, swapType,
     status: 'proposed',
+    topUpAmountKobo: topUpAmountKobo || 0,
+    topUpPayerRole: topUpPayerRole || 'none',
   });
 
   const populated = await populateSwap(Swap.findById(swap._id));
@@ -123,6 +125,20 @@ const respondToSwap = async (swapId, userId, action) => {
   if (newStatus === 'cancelled') {
     if (swap.initiatorDepositPaid) await _refundDeposit(swap.initiatorId.toString(), swapId);
     if (swap.receiverDepositPaid)  await _refundDeposit(swap.receiverId.toString(),  swapId);
+    // Refund top-up if already paid
+    if (swap.topUpPaid && swap.topUpAmountKobo > 0 && swap.topUpPayerRole !== 'none') {
+      const topUpPayerId = swap.topUpPayerRole === 'initiator'
+        ? swap.initiatorId.toString()
+        : swap.receiverId.toString();
+      await User.findByIdAndUpdate(topUpPayerId, { $inc: { walletBalance: swap.topUpAmountKobo } });
+      await Payment.create({
+        userId: topUpPayerId, swapId,
+        amountKobo: swap.topUpAmountKobo,
+        paymentType: 'escrow',
+        status: 'refunded',
+        meta: { type: 'topup_cancelled_refund' },
+      });
+    }
   }
 
   swap.status = newStatus;
@@ -273,8 +289,80 @@ const confirmCompletion = async (swapId, userId) => {
         { userId: swap.receiverId,  swapId, amountKobo: ESCROW_REFUND_KOBO, paymentType: 'escrow', status: 'refunded', meta: { type: 'escrow_completion_refund' } },
       ]);
     }
+
+    // Release top-up to the receiving party (the one who did NOT pay the top-up)
+    if (swap.topUpPaid && swap.topUpAmountKobo > 0 && swap.topUpPayerRole !== 'none') {
+      const topUpReceiverId = swap.topUpPayerRole === 'initiator'
+        ? swap.receiverId.toString()
+        : swap.initiatorId.toString();
+      await User.findByIdAndUpdate(topUpReceiverId, { $inc: { walletBalance: swap.topUpAmountKobo } });
+      swap.topUpReleasedAt = new Date();
+      await Payment.create({
+        userId: topUpReceiverId, swapId,
+        amountKobo: swap.topUpAmountKobo,
+        paymentType: 'escrow',
+        status: 'refunded',
+        meta: { type: 'topup_released' },
+      });
+    }
   }
 
+  await swap.save();
+
+  const populated = await populateSwap(Swap.findById(swap._id));
+  const result = populated.toJSON();
+  emitSwapEvent('swap:updated', [swap.initiatorId.toString(), swap.receiverId.toString()], result);
+  return result;
+};
+
+// ─── Pay value-gap top-up (Barter Credits) ───────────────────────────────────
+const payTopUp = async (swapId, userId) => {
+  const swap = await Swap.findById(swapId);
+  if (!swap) throw Object.assign(new Error('Swap not found'), { status: 404 });
+
+  const isInitiator = swap.initiatorId.toString() === userId;
+  const isReceiver  = swap.receiverId.toString()  === userId;
+  if (!isInitiator && !isReceiver) throw Object.assign(new Error('Not a participant'), { status: 403 });
+
+  if (swap.topUpAmountKobo <= 0 || swap.topUpPayerRole === 'none') {
+    throw Object.assign(new Error('No top-up required for this swap'), { status: 400 });
+  }
+  if (swap.topUpPaid) {
+    throw Object.assign(new Error('Top-up already paid'), { status: 409 });
+  }
+
+  const expectedRole = isInitiator ? 'initiator' : 'receiver';
+  if (swap.topUpPayerRole !== expectedRole) {
+    throw Object.assign(new Error('You are not the party responsible for the top-up'), { status: 403 });
+  }
+
+  if (!['accepted', 'in_escrow'].includes(swap.status)) {
+    throw Object.assign(new Error('Top-up can only be paid on an accepted or in-escrow swap'), { status: 400 });
+  }
+
+  // Deduct atomically
+  const user = await User.findOneAndUpdate(
+    { _id: userId, walletBalance: { $gte: swap.topUpAmountKobo } },
+    { $inc: { walletBalance: -swap.topUpAmountKobo } },
+    { new: true }
+  );
+  if (!user) {
+    throw Object.assign(
+      new Error(`Insufficient Barter Credits. You need ${(swap.topUpAmountKobo / 100).toLocaleString()} BC to pay the value gap.`),
+      { status: 402 }
+    );
+  }
+
+  await Payment.create({
+    userId, swapId,
+    amountKobo: swap.topUpAmountKobo,
+    paymentType: 'escrow',
+    status: 'success',
+    meta: { type: 'topup_paid', role: expectedRole },
+  });
+
+  swap.topUpPaid   = true;
+  swap.topUpPaidAt = new Date();
   await swap.save();
 
   const populated = await populateSwap(Swap.findById(swap._id));
@@ -323,6 +411,6 @@ const getUserSwaps = async (userId, status) => {
 // ─── Exports ──────────────────────────────────────────────────────────────────
 module.exports = {
   proposeSwap, getSwap, respondToSwap, setMeetup,
-  payEscrowDeposit, confirmCompletion, raiseDispute, getUserSwaps,
+  payEscrowDeposit, confirmCompletion, raiseDispute, getUserSwaps, payTopUp,
   ESCROW_DEPOSIT_KOBO, ESCROW_PLATFORM_FEE, ESCROW_REFUND_KOBO,
 };

@@ -5,7 +5,7 @@ const { proposeSwapSchema, respondSwapSchema, setMeetupSchema, disputeSchema } =
 const {
   proposeSwapController, getSwapController, respondController,
   setMeetupController, escrowDepositController, escrowInfoController,
-  confirmController, disputeController, getMySwapsController,
+  confirmController, disputeController, getMySwapsController, topUpController,
 } = require('./swaps.controller');
 
 router.get('/',                    auth, getMySwapsController);
@@ -17,5 +17,6 @@ router.patch('/:id/meetup',        auth, validate(setMeetupSchema), setMeetupCon
 router.patch('/:id/escrow',        auth, escrowDepositController);
 router.patch('/:id/confirm',       auth, confirmController);
 router.patch('/:id/dispute',       auth, validate(disputeSchema), disputeController);
+router.patch('/:id/topup',         auth, topUpController);
 
 module.exports = router;

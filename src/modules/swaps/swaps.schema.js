@@ -6,6 +6,8 @@ const proposeSwapSchema = z.object({
   receiverListing: z.string().optional(),
   proposalNote: z.string().max(500).optional(),
   agreedValue: z.number().min(0).optional(),
+  topUpAmountKobo: z.number().int().min(0).optional(),
+  topUpPayerRole: z.enum(['initiator', 'receiver', 'none']).optional(),
 });
 
 const respondSwapSchema = z.object({

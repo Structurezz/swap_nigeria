@@ -1,6 +1,6 @@
 const {
   proposeSwap, getSwap, respondToSwap, setMeetup,
-  payEscrowDeposit, confirmCompletion, raiseDispute, getUserSwaps,
+  payEscrowDeposit, confirmCompletion, raiseDispute, getUserSwaps, payTopUp,
   ESCROW_DEPOSIT_KOBO, ESCROW_REFUND_KOBO, ESCROW_PLATFORM_FEE,
 } = require('./swaps.service');
 
@@ -42,11 +42,12 @@ const escrowDepositController = async (req, res, next) => {
 const escrowInfoController = (req, res) => {
   res.json({
     data: {
-      depositKobo:   ESCROW_DEPOSIT_KOBO,
-      refundKobo:    ESCROW_REFUND_KOBO,
+      depositKobo:    ESCROW_DEPOSIT_KOBO,
+      refundKobo:     ESCROW_REFUND_KOBO,
       platformFeeKobo: ESCROW_PLATFORM_FEE,
-      depositNgn:    ESCROW_DEPOSIT_KOBO / 100,
-      refundNgn:     ESCROW_REFUND_KOBO  / 100,
+      // Legacy fields kept for backward compat
+      depositNgn:     ESCROW_DEPOSIT_KOBO / 100,
+      refundNgn:      ESCROW_REFUND_KOBO  / 100,
       platformFeeNgn: ESCROW_PLATFORM_FEE / 100,
     },
   });
@@ -73,8 +74,15 @@ const getMySwapsController = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const topUpController = async (req, res, next) => {
+  try {
+    const swap = await payTopUp(req.params.id, req.user.id);
+    res.json({ data: swap });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   proposeSwapController, getSwapController, respondController,
   setMeetupController, escrowDepositController, escrowInfoController,
-  confirmController, disputeController, getMySwapsController,
+  confirmController, disputeController, getMySwapsController, topUpController,
 };

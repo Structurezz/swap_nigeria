@@ -214,7 +214,7 @@ const payEscrowDeposit = async (swapId, userId) => {
   );
   if (!user) {
     throw Object.assign(
-      new Error(`Insufficient wallet balance. Top up ₦${(ESCROW_DEPOSIT_KOBO / 100).toLocaleString()} to activate escrow.`),
+      new Error(`Insufficient Barter Credits. You need ${(ESCROW_DEPOSIT_KOBO / 100).toLocaleString()} BC to activate escrow.`),
       { status: 402 }
     );
   }

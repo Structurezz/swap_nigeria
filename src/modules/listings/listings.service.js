@@ -95,6 +95,14 @@ const addImages = async (listingId, userId, imageUrls) => {
   const listing = await Listing.findOne({ _id: listingId, userId });
   if (!listing) throw Object.assign(new Error('Listing not found or not yours'), { status: 404 });
 
+  const totalAfter = listing.images.length + imageUrls.length;
+  if (totalAfter > 8) {
+    throw Object.assign(
+      new Error(`Cannot exceed 8 images per listing (currently has ${listing.images.length})`),
+      { status: 400 }
+    );
+  }
+
   listing.images.push(...imageUrls);
   await listing.save();
   return listing.toJSON();

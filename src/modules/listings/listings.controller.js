@@ -44,7 +44,7 @@ const getMyListingsController = async (req, res, next) => {
 };
 
 const uploadImagesController = [
-  uploadMultiple('images', 4),
+  uploadMultiple('images', 8),
   async (req, res, next) => {
     try {
       if (!req.files || !req.files.length) {

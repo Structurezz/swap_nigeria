@@ -26,17 +26,29 @@ const safeSend = async (to, tpl) => {
   }
 };
 
+// ─── Safe ID extractor ───────────────────────────────────────────────────────
+// After toJSON(), populated fields are plain objects with .id not ._id
+// Plain ObjectId fields are strings. This handles both.
+const sid = (field) => {
+  if (!field) return '';
+  if (typeof field === 'object') return String(field._id || field.id || '');
+  return String(field);
+};
+
 // ─── Resolve user emails for a swap ──────────────────────────────────────────
 // Handles both populated (object) and unpopulated (ObjectId string) initiatorId/receiverId
 // Only returns REAL email addresses — never the @swapnaija.ng fallback
 const resolveEmails = async (swap) => {
-  // If already populated, use embedded data directly; otherwise fetch from DB
+  // Resolve user to a record that has email.
+  // populateSwap() only selects fullName/phone/ratingAvg/verification — NOT email.
+  // So even when field is a populated object we must re-fetch if email is absent.
   const resolveUser = async (field) => {
     if (!field) return null;
-    // Already a full object with email/fullName
-    if (typeof field === 'object' && field.fullName) return field;
-    // Plain ID — fetch
-    return User.findById(field).select('fullName email phone emailPrefs').lean();
+    // If we already have a full object WITH email, use it directly
+    if (typeof field === 'object' && field.email) return field;
+    // Populated object without email, or a plain ID string — fetch from DB
+    const id = typeof field === 'object' ? (field._id || field.id) : field;
+    return User.findById(id).select('fullName email phone emailPrefs').lean();
   };
   const [initiator, receiver] = await Promise.all([
     resolveUser(swap.initiatorId),
@@ -72,7 +84,7 @@ const notifySwapAccepted = async (swap) => {
 // ─── 3. Swap Cancelled / Declined ────────────────────────────────────────────
 const notifySwapCancelled = async (swap, actorId, isDecline = false) => {
   const { initiator, receiver, initiatorEmail, receiverEmail } = await resolveEmails(swap);
-  const actorIsInitiator = swap.initiatorId.toString() === actorId;
+  const actorIsInitiator = sid(swap.initiatorId) === actorId;
 
   // Notify the OTHER party
   if (actorIsInitiator && receiverEmail && wantsEmail(receiver, 'swapUpdates')) {
@@ -87,7 +99,7 @@ const notifySwapCancelled = async (swap, actorId, isDecline = false) => {
 // ─── 4. Meetup Set ────────────────────────────────────────────────────────────
 const notifyMeetupSet = async (swap, actorId) => {
   const { initiator, receiver, initiatorEmail, receiverEmail } = await resolveEmails(swap);
-  const actorIsInitiator = swap.initiatorId.toString() === actorId;
+  const actorIsInitiator = sid(swap.initiatorId) === actorId;
 
   if (actorIsInitiator && receiverEmail && wantsEmail(receiver, 'swapUpdates')) {
     await safeSend(receiverEmail, T.meetupSet({ user: receiver, otherUser: initiator, swap, frontendUrl: FE() }));
@@ -99,7 +111,7 @@ const notifyMeetupSet = async (swap, actorId) => {
 // ─── 5. Escrow Deposit Paid ───────────────────────────────────────────────────
 const notifyEscrowDepositPaid = async (swap, payerId) => {
   const { initiator, receiver, initiatorEmail, receiverEmail } = await resolveEmails(swap);
-  const payerIsInitiator = swap.initiatorId.toString() === payerId;
+  const payerIsInitiator = sid(swap.initiatorId) === payerId;
 
   if (payerIsInitiator && receiverEmail && wantsEmail(receiver, 'swapUpdates')) {
     // Tell receiver to pay theirs
@@ -144,20 +156,20 @@ const notifySwapCompleted = async (swap) => {
 // ─── 8. Dispute Raised ───────────────────────────────────────────────────────
 const notifyDisputeRaised = async (swap) => {
   const { initiator, receiver, initiatorEmail, receiverEmail } = await resolveEmails(swap);
-  const raiserId = swap.disputeRaisedBy?.toString();
-  const raiser = raiserId === swap.initiatorId.toString() ? initiator : receiver;
+  const raiserId = sid(swap.disputeRaisedBy);
+  const raiser = raiserId === sid(swap.initiatorId) ? initiator : receiver;
 
   if (initiatorEmail && wantsEmail(initiator, 'swapUpdates')) {
     await safeSend(initiatorEmail, T.disputeRaised({
       user: initiator, raiser, swap,
-      isRaiser: swap.initiatorId.toString() === raiserId,
+      isRaiser: sid(swap.initiatorId) === raiserId,
       frontendUrl: FE()
     }));
   }
   if (receiverEmail && wantsEmail(receiver, 'swapUpdates')) {
     await safeSend(receiverEmail, T.disputeRaised({
       user: receiver, raiser, swap,
-      isRaiser: swap.receiverId.toString() === raiserId,
+      isRaiser: sid(swap.receiverId) === raiserId,
       frontendUrl: FE()
     }));
   }
@@ -167,7 +179,7 @@ const notifyDisputeRaised = async (swap) => {
 // Notifies the OTHER party that their partner already confirmed — urge them to confirm too
 const notifyOnePartyConfirmed = async (swap, confirmerId) => {
   const { initiator, receiver, initiatorEmail, receiverEmail } = await resolveEmails(swap);
-  const confirmerIsInitiator = swap.initiatorId.toString() === confirmerId;
+  const confirmerIsInitiator = sid(swap.initiatorId) === confirmerId;
 
   // Notify the one who HAS NOT yet confirmed
   if (confirmerIsInitiator && receiverEmail && wantsEmail(receiver, 'swapUpdates')) {
@@ -183,7 +195,7 @@ const notifyOnePartyConfirmed = async (swap, confirmerId) => {
 // Notifies the OTHER party (who RECEIVES the top-up) that it has been paid
 const notifyTopUpPaid = async (swap, payerId) => {
   const { initiator, receiver, initiatorEmail, receiverEmail } = await resolveEmails(swap);
-  const payerIsInitiator = swap.initiatorId.toString() === payerId;
+  const payerIsInitiator = sid(swap.initiatorId) === payerId;
 
   // Notify the one who receives the top-up (the other party)
   if (payerIsInitiator && receiverEmail && wantsEmail(receiver, 'swapUpdates')) {

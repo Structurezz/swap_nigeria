@@ -16,10 +16,11 @@ try {
   };
 }
 
-// Mock/dev (no Paystack key) → localhost so you can test the flow locally.
-// Real Paystack → the deployed frontend so the callback URL is publicly accessible.
+// In development always callback to localhost regardless of whether a real key is set.
+// In production use the deployed frontend URL.
 const MOCK_FRONTEND  = 'http://localhost:5173';
 const PROD_FRONTEND  = config.FRONTEND_URL || 'https://swapnigeria.netlify.app';
+const CALLBACK_URL   = config.NODE_ENV === 'development' ? MOCK_FRONTEND : PROD_FRONTEND;
 
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
@@ -56,7 +57,7 @@ const _paystackInit = async ({ payment, email, metadata }) => {
         amount: payment.amountKobo,
         reference: payment._id.toString(),
         // After payment Paystack redirects the user's browser here
-        callback_url: `${PROD_FRONTEND}/wallet?ref=${payment._id}`,
+        callback_url: `${CALLBACK_URL}/wallet?ref=${payment._id}`,
         metadata,
       },
       { headers: paystackHeaders() }

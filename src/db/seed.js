@@ -24,12 +24,12 @@ const CATEGORIES = [
 
 // ─── Test users ───────────────────────────────────────────────────────────────
 const TEST_USERS = [
-  { phone: '+2348000000001', fullName: 'Amaka Okafor',   username: 'amaka_swaps',   locationState: 'Lagos', locationLga: 'Ikeja',          status: 'active' },
-  { phone: '+2348000000002', fullName: 'Chidi Nwosu',    username: 'chidi_trader',  locationState: 'Abuja', locationLga: 'Garki',          status: 'active' },
-  { phone: '+2348000000003', fullName: 'Fatima Bello',   username: 'fatima_b',      locationState: 'Kano',  locationLga: 'Kano Municipal', status: 'active' },
+  { phone: '+2348000000001', email: 'amaka@swapnaija.ng',   fullName: 'Amaka Okafor',  username: 'amaka_swaps',   locationState: 'Lagos', locationLga: 'Ikeja',          status: 'active' },
+  { phone: '+2348000000002', email: 'chidi@swapnaija.ng',   fullName: 'Chidi Nwosu',   username: 'chidi_trader',  locationState: 'Abuja', locationLga: 'Garki',          status: 'active' },
+  { phone: '+2348000000003', email: 'fatima@swapnaija.ng',  fullName: 'Fatima Bello',  username: 'fatima_b',      locationState: 'Kano',  locationLga: 'Kano Municipal', status: 'active' },
   // Fixed-ID dev account — preserved across reseeds
   { _id: new mongoose.Types.ObjectId('69ffd094b098fffb00cb84ea'),
-    phone: '+2348000000004', fullName: 'Michael Orizu',  username: 'michael_orizu', locationState: 'Lagos', locationLga: 'Lekki',          status: 'active',
+    phone: '+2348000000004', email: 'orizu1996@gmail.com',  fullName: 'Michael Orizu', username: 'michael_orizu', locationState: 'Lagos', locationLga: 'Lekki',          status: 'active',
     walletBalance: 50000000 }, // 500,000 BC = ₦500,000
 ];
 

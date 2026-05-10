@@ -27,13 +27,27 @@ const safeSend = async (to, tpl) => {
 };
 
 // ─── Resolve user emails for a swap ──────────────────────────────────────────
+// Handles both populated (object) and unpopulated (ObjectId string) initiatorId/receiverId
+// Only returns REAL email addresses — never the @swapnaija.ng fallback
 const resolveEmails = async (swap) => {
+  // If already populated, use embedded data directly; otherwise fetch from DB
+  const resolveUser = async (field) => {
+    if (!field) return null;
+    // Already a full object with email/fullName
+    if (typeof field === 'object' && field.fullName) return field;
+    // Plain ID — fetch
+    return User.findById(field).select('fullName email phone emailPrefs').lean();
+  };
   const [initiator, receiver] = await Promise.all([
-    User.findById(swap.initiatorId).select('fullName email phone emailPrefs'),
-    User.findById(swap.receiverId).select('fullName email phone emailPrefs'),
+    resolveUser(swap.initiatorId),
+    resolveUser(swap.receiverId),
   ]);
-  const emailOf = (u) => u?.email || (u?.phone ? `${u.phone.replace(/\D/g, '')}@swapnaija.ng` : null);
-  return { initiator, receiver, initiatorEmail: emailOf(initiator), receiverEmail: emailOf(receiver) };
+  return {
+    initiator,
+    receiver,
+    initiatorEmail: initiator?.email || null,
+    receiverEmail:  receiver?.email  || null,
+  };
 };
 
 const wantsEmail = (user, type = 'swapUpdates') =>
@@ -164,7 +178,7 @@ const notifyTopUpRequired = async (swap) => {
 // ─── 10. Welcome ─────────────────────────────────────────────────────────────
 const notifyWelcome = async (userId) => {
   const user = await User.findById(userId).select('fullName email phone emailPrefs');
-  const email = user?.email || (user?.phone ? `${user.phone.replace(/\D/g, '')}@swapnaija.ng` : null);
+  const email = user?.email || null;
   if (!email) return;
   await safeSend(email, T.welcomeEmail({ user, frontendUrl: FE() }));
 };
@@ -286,7 +300,7 @@ const sendMorningDigest = async (userId) => {
   if (!data) return;
   const { user } = data;
   if (!wantsEmail(user, 'dailyDigest')) return;
-  const email = user.email || `${user.phone?.replace(/\D/g, '')}@swapnaija.ng`;
+  const email = user.email || null;
   if (!email) return;
   await safeSend(email, T.morningDigest({ ...data, frontendUrl: FE() }));
 };
@@ -297,7 +311,7 @@ const sendAfternoonDigest = async (userId) => {
   if (!data) return;
   const { user } = data;
   if (!wantsEmail(user, 'dailyDigest')) return;
-  const email = user.email || `${user.phone?.replace(/\D/g, '')}@swapnaija.ng`;
+  const email = user.email || null;
   if (!email) return;
   await safeSend(email, T.afternoonDigest({ ...data, frontendUrl: FE() }));
 };
@@ -308,7 +322,7 @@ const sendNightDigest = async (userId) => {
   if (!data) return;
   const { user } = data;
   if (!wantsEmail(user, 'dailyDigest')) return;
-  const email = user.email || `${user.phone?.replace(/\D/g, '')}@swapnaija.ng`;
+  const email = user.email || null;
   if (!email) return;
   await safeSend(email, T.nightDigest({ ...data, frontendUrl: FE() }));
 };

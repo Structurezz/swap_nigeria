@@ -61,7 +61,8 @@ app.use('/api/matches', require('./modules/matches/matches.routes'));
 app.use('/api/swaps', require('./modules/swaps/swaps.routes'));
 app.use('/api/messages', require('./modules/messages/messages.routes'));
 app.use('/api/reviews', require('./modules/reviews/reviews.routes'));
-app.use('/api/payments', require('./modules/payments/payments.routes'));
+app.use('/api/payments',       require('./modules/payments/payments.routes'));
+app.use('/api/notifications',  require('./modules/notifications/notifications.routes'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 

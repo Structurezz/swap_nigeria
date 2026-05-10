@@ -13,11 +13,14 @@ try {
 
 const PORT = config.PORT || 5000;
 
+const { startScheduler } = require('./modules/notifications/notifications.scheduler');
+
 const start = async () => {
   await connectDB();
 
   const httpServer = http.createServer(app);
   initSocket(httpServer);
+  startScheduler();
 
   httpServer.listen(PORT, () => {
     console.log(`SwapNaija server running on port ${PORT} [${config.NODE_ENV}]`);

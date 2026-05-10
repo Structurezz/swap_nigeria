@@ -3,6 +3,7 @@ const Listing = require('../../models/Listing');
 const User = require('../../models/User');
 const Payment = require('../../models/Payment');
 const { emitSwapEvent } = require('../../socket');
+const N = require('../notifications/notifications.service');
 
 // ─── Escrow config ────────────────────────────────────────────────────────────
 const ESCROW_PLATFORM_FEE_PCT = 0.02;   // 2% of deposit kept as service fee
@@ -129,6 +130,7 @@ const proposeSwap = async (initiatorId, data) => {
   const populated = await populateSwap(Swap.findById(swap._id));
   const result = populated.toJSON();
   emitSwapEvent('swap:new', [receiverId], result);
+  N.notifySwapProposed(result).catch(() => {});
   return result;
 };
 
@@ -190,6 +192,8 @@ const respondToSwap = async (swapId, userId, action) => {
   const result = populated.toJSON();
   const otherId = isInitiator ? swap.receiverId.toString() : swap.initiatorId.toString();
   emitSwapEvent('swap:updated', [otherId], result);
+  if (newStatus === 'accepted') N.notifySwapAccepted(result).catch(() => {});
+  if (newStatus === 'cancelled') N.notifySwapCancelled(result, userId, swap.status === 'proposed').catch(() => {});
   return result;
 };
 
@@ -225,6 +229,7 @@ const setMeetup = async (swapId, userId, meetupData) => {
     ? swap.receiverId.toString()
     : swap.initiatorId.toString();
   emitSwapEvent('swap:updated', [otherId], result);
+  N.notifyMeetupSet(result, userId).catch(() => {});
   return result;
 };
 
@@ -287,6 +292,12 @@ const payEscrowDeposit = async (swapId, userId) => {
   const populated = await populateSwap(Swap.findById(swap._id));
   const result = populated.toJSON();
   emitSwapEvent('swap:updated', [swap.initiatorId.toString(), swap.receiverId.toString()], result);
+  // Notify one party to pay, or both if escrow just activated
+  if (result.status === 'in_escrow') {
+    N.notifyEscrowActivated(result).catch(() => {});
+  } else {
+    N.notifyEscrowDepositPaid(result, userId).catch(() => {});
+  }
   return result;
 };
 
@@ -358,6 +369,7 @@ const confirmCompletion = async (swapId, userId) => {
   const populated = await populateSwap(Swap.findById(swap._id));
   const result = populated.toJSON();
   emitSwapEvent('swap:updated', [swap.initiatorId.toString(), swap.receiverId.toString()], result);
+  if (result.status === 'completed') N.notifySwapCompleted(result).catch(() => {});
   return result;
 };
 
@@ -418,6 +430,7 @@ const payTopUp = async (swapId, userId) => {
 };
 
 // ─── Raise dispute ────────────────────────────────────────────────────────────
+
 const raiseDispute = async (swapId, userId, reason) => {
   const swap = await Swap.findById(swapId);
   if (!swap) throw Object.assign(new Error('Swap not found'), { status: 404 });
@@ -442,6 +455,7 @@ const raiseDispute = async (swapId, userId, reason) => {
     ? swap.receiverId.toString()
     : swap.initiatorId.toString();
   emitSwapEvent('swap:disputed', [otherId], result);
+  N.notifyDisputeRaised(result).catch(() => {});
   return result;
 };
 

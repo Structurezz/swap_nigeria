@@ -35,6 +35,11 @@ const userSchema = new mongoose.Schema(
     referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     referralCount: { type: Number, default: 0 },
     swapCredits: { type: Number, default: 0 },
+    emailPrefs: {
+      swapUpdates: { type: Boolean, default: true },  // transactional: proposed, accepted, etc.
+      dailyDigest: { type: Boolean, default: true },  // morning / afternoon / night digest
+      marketing:   { type: Boolean, default: false }, // promotions / news
+    },
   },
   {
     timestamps: true,

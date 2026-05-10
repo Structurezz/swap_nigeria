@@ -16,11 +16,11 @@ try {
   };
 }
 
-// In development always callback to localhost regardless of whether a real key is set.
-// In production use the deployed frontend URL.
-const MOCK_FRONTEND  = 'http://localhost:5173';
-const PROD_FRONTEND  = config.FRONTEND_URL || 'https://swapnigeria.netlify.app';
-const CALLBACK_URL   = config.NODE_ENV === 'development' ? MOCK_FRONTEND : PROD_FRONTEND;
+// FRONTEND_URL is set explicitly per environment (.env / hosting vars).
+// It defaults to localhost:5173 in dev and the Netlify URL in production,
+// so it is the correct signal — no need to inspect NODE_ENV.
+const MOCK_FRONTEND = 'http://localhost:5173';
+const CALLBACK_URL  = config.FRONTEND_URL || MOCK_FRONTEND;
 
 const PAYSTACK_BASE = 'https://api.paystack.co';
 

@@ -21,8 +21,9 @@ const safeSend = async (to, tpl) => {
   try {
     const injected = T.injectUrl(tpl, FE());
     await sendEmail({ to, subject: injected.subject, html: injected.html, text: injected.text });
+    console.log(`[NOTIFY] ✓ Sent "${injected.subject}" → ${to}`);
   } catch (err) {
-    console.warn(`[NOTIFY] Failed to send "${tpl.subject}" to ${to}: ${err.message}`);
+    console.warn(`[NOTIFY] ✗ Failed to send "${tpl.subject}" to ${to}: ${err.message}`);
   }
 };
 
@@ -82,17 +83,27 @@ const notifySwapAccepted = async (swap) => {
 };
 
 // ─── 3. Swap Cancelled / Declined ────────────────────────────────────────────
+// isDecline=true means the RECEIVER declined a proposed swap → use swapDeclined template for initiator
+// isDecline=false means an in-progress swap was cancelled → use swapCancelled template for other party
 const notifySwapCancelled = async (swap, actorId, isDecline = false) => {
   const { initiator, receiver, initiatorEmail, receiverEmail } = await resolveEmails(swap);
   const actorIsInitiator = sid(swap.initiatorId) === actorId;
 
-  // Notify the OTHER party
-  if (actorIsInitiator && receiverEmail && wantsEmail(receiver, 'swapUpdates')) {
-    const tpl = T.swapCancelled({ user: receiver, otherUser: initiator, swap, isDecline, frontendUrl: FE() });
-    await safeSend(receiverEmail, tpl);
-  } else if (!actorIsInitiator && initiatorEmail && wantsEmail(initiator, 'swapUpdates')) {
-    const tpl = T.swapCancelled({ user: initiator, otherUser: receiver, swap, isDecline, frontendUrl: FE() });
-    await safeSend(initiatorEmail, tpl);
+  if (isDecline) {
+    // Receiver declined → notify the initiator using the "declined" template
+    if (initiatorEmail && wantsEmail(initiator, 'swapUpdates')) {
+      await safeSend(initiatorEmail, T.swapDeclined({ initiator, receiver, swap, frontendUrl: FE() }));
+    }
+  } else if (actorIsInitiator) {
+    // Initiator cancelled → notify receiver
+    if (receiverEmail && wantsEmail(receiver, 'swapUpdates')) {
+      await safeSend(receiverEmail, T.swapCancelled({ user: receiver, canceller: initiator, swap, frontendUrl: FE() }));
+    }
+  } else {
+    // Receiver cancelled → notify initiator
+    if (initiatorEmail && wantsEmail(initiator, 'swapUpdates')) {
+      await safeSend(initiatorEmail, T.swapCancelled({ user: initiator, canceller: receiver, swap, frontendUrl: FE() }));
+    }
   }
 };
 
@@ -102,9 +113,9 @@ const notifyMeetupSet = async (swap, actorId) => {
   const actorIsInitiator = sid(swap.initiatorId) === actorId;
 
   if (actorIsInitiator && receiverEmail && wantsEmail(receiver, 'swapUpdates')) {
-    await safeSend(receiverEmail, T.meetupSet({ user: receiver, otherUser: initiator, swap, frontendUrl: FE() }));
+    await safeSend(receiverEmail, T.meetupSet({ user: receiver, setter: initiator, swap, frontendUrl: FE() }));
   } else if (!actorIsInitiator && initiatorEmail && wantsEmail(initiator, 'swapUpdates')) {
-    await safeSend(initiatorEmail, T.meetupSet({ user: initiator, otherUser: receiver, swap, frontendUrl: FE() }));
+    await safeSend(initiatorEmail, T.meetupSet({ user: initiator, setter: receiver, swap, frontendUrl: FE() }));
   }
 };
 
@@ -230,7 +241,7 @@ const notifyWalletTopup = async (userId, amountKobo) => {
     newBalanceKobo: user.walletBalance || 0,
     frontendUrl: FE(),
   });
-  await safeSend(user.email, T.injectUrl(tpl, FE()));
+  await safeSend(user.email, tpl);
 };
 
 // ─── 13. Escrow Reminder ─────────────────────────────────────────────────────
@@ -277,7 +288,7 @@ const buildDigestData = async (userId) => {
     .sort({ updatedAt: -1 });
 
   const enriched = mySwaps.map(s => {
-    const isInitiator = s.initiatorId._id.toString() === userId;
+    const isInitiator = sid(s.initiatorId) === String(userId);
     return {
       ...s.toObject(),
       isInitiator,

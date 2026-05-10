@@ -12,9 +12,14 @@ try {
   config = {
     PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY || '',
     NODE_ENV: process.env.NODE_ENV || 'development',
-    FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
+    FRONTEND_URL: process.env.FRONTEND_URL || 'https://swapnigeria.netlify.app',
   };
 }
+
+// Mock/dev (no Paystack key) → localhost so you can test the flow locally.
+// Real Paystack → the deployed frontend so the callback URL is publicly accessible.
+const MOCK_FRONTEND  = 'http://localhost:5173';
+const PROD_FRONTEND  = config.FRONTEND_URL || 'https://swapnigeria.netlify.app';
 
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
@@ -33,10 +38,10 @@ const paystackHeaders = () => ({
 // ─── Internal: create a Paystack checkout session ─────────────────────────────
 const _paystackInit = async ({ payment, email, metadata }) => {
   if (!config.PAYSTACK_SECRET_KEY) {
-    // Dev mock — auto-credit the topup on same request
+    // Dev mock — redirect to localhost so you can test the flow without deploying
     return {
       paymentId: payment._id.toString(),
-      authorizationUrl: `${config.FRONTEND_URL}/wallet?mock_ref=${payment._id}`,
+      authorizationUrl: `${MOCK_FRONTEND}/wallet?mock_ref=${payment._id}`,
       reference: `mock_${payment._id}`,
       mock: true,
     };
@@ -50,7 +55,8 @@ const _paystackInit = async ({ payment, email, metadata }) => {
         email,
         amount: payment.amountKobo,
         reference: payment._id.toString(),
-        callback_url: `${config.FRONTEND_URL}/wallet?ref=${payment._id}`,
+        // After payment Paystack redirects the user's browser here
+        callback_url: `${PROD_FRONTEND}/wallet?ref=${payment._id}`,
         metadata,
       },
       { headers: paystackHeaders() }

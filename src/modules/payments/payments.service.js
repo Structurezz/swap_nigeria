@@ -41,17 +41,24 @@ const _paystackInit = async ({ payment, email, metadata }) => {
     };
   }
 
-  const paystackRes = await axios.post(
-    `${PAYSTACK_BASE}/transaction/initialize`,
-    {
-      email,
-      amount: payment.amountKobo,
-      reference: payment._id.toString(),
-      callback_url: `${config.FRONTEND_URL}/wallet?ref=${payment._id}`,
-      metadata,
-    },
-    { headers: paystackHeaders() }
-  );
+  let paystackRes;
+  try {
+    paystackRes = await axios.post(
+      `${PAYSTACK_BASE}/transaction/initialize`,
+      {
+        email,
+        amount: payment.amountKobo,
+        reference: payment._id.toString(),
+        callback_url: `${config.FRONTEND_URL}/wallet?ref=${payment._id}`,
+        metadata,
+      },
+      { headers: paystackHeaders() }
+    );
+  } catch (axiosErr) {
+    // Surface the actual Paystack error message instead of the generic axios one
+    const paystackMsg = axiosErr.response?.data?.message || axiosErr.message;
+    throw Object.assign(new Error(`Paystack error: ${paystackMsg}`), { status: 502 });
+  }
 
   const { authorization_url, reference } = paystackRes.data.data;
   await Payment.findByIdAndUpdate(payment._id, { paystackRef: reference });
@@ -88,6 +95,10 @@ const initiateTopup = async (userId, amountKobo, email) => {
   const user = await User.findById(userId);
   if (!user) throw Object.assign(new Error('User not found'), { status: 404 });
 
+  // Paystack requires an email — fall back to a generated one for phone-only users
+  const resolvedEmail = email || user.email
+    || `${user.phone.replace(/\D/g, '')}@swapnaija.ng`;
+
   const payment = await Payment.create({
     userId,
     amountKobo,
@@ -97,7 +108,7 @@ const initiateTopup = async (userId, amountKobo, email) => {
 
   return _paystackInit({
     payment,
-    email: email || user.email,
+    email: resolvedEmail,
     metadata: { userId, paymentType: 'topup' },
   });
 };

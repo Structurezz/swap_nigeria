@@ -4,10 +4,27 @@ const User = require('../../models/User');
 const Payment = require('../../models/Payment');
 const { emitSwapEvent } = require('../../socket');
 
-// ─── Escrow constants ─────────────────────────────────────────────────────────
-const ESCROW_DEPOSIT_KOBO    = 100000; // ₦1,000 per party
-const ESCROW_PLATFORM_FEE    = 20000;  // ₦200 kept per party on completion
-const ESCROW_REFUND_KOBO     = ESCROW_DEPOSIT_KOBO - ESCROW_PLATFORM_FEE; // ₦800
+// ─── Escrow config ────────────────────────────────────────────────────────────
+const ESCROW_PLATFORM_FEE_PCT = 0.02;   // 2% of deposit kept as service fee
+const ESCROW_MIN_DEPOSIT_KOBO = 50000;  // minimum ₦500 collateral per party
+const ESCROW_DEFAULT_COLLATERAL_PCT = 10; // default 10% of item value
+
+// Calculate escrow amounts for a given deposit
+const escrowAmounts = (depositKobo) => {
+  const platformFeeKobo = Math.round(depositKobo * ESCROW_PLATFORM_FEE_PCT);
+  const refundKobo      = depositKobo - platformFeeKobo;
+  return { depositKobo, platformFeeKobo, refundKobo };
+};
+
+// Compute deposit from listing values + collateral %
+const calcDepositKobo = (initiatorEstimatedValue, receiverEstimatedValue, collateralPercent) => {
+  // estimatedValue is stored in Naira — use the higher item as the benchmark
+  const maxValueNaira = Math.max(initiatorEstimatedValue || 0, receiverEstimatedValue || 0);
+  if (maxValueNaira <= 0) return ESCROW_MIN_DEPOSIT_KOBO; // fallback
+  const pct = collateralPercent || ESCROW_DEFAULT_COLLATERAL_PCT;
+  const depositNaira = Math.round(maxValueNaira * (pct / 100));
+  return Math.max(ESCROW_MIN_DEPOSIT_KOBO, depositNaira * 100); // convert ₦ → kobo
+};
 
 // ─── State machine ────────────────────────────────────────────────────────────
 const ALLOWED_TRANSITIONS = {
@@ -43,11 +60,11 @@ const inferSwapType = async (initiatorListingId, receiverListingId) => {
 };
 
 // Refund a single party's escrow deposit in full (used on cancellation)
-const _refundDeposit = async (userId, swapId, reason = 'escrow_cancelled_refund') => {
-  await User.findByIdAndUpdate(userId, { $inc: { walletBalance: ESCROW_DEPOSIT_KOBO } });
+const _refundDeposit = async (userId, swapId, amountKobo, reason = 'escrow_cancelled_refund') => {
+  await User.findByIdAndUpdate(userId, { $inc: { walletBalance: amountKobo } });
   await Payment.create({
     userId, swapId,
-    amountKobo: ESCROW_DEPOSIT_KOBO,
+    amountKobo,
     paymentType: 'escrow',
     status: 'refunded',
     meta: { type: reason },
@@ -56,7 +73,7 @@ const _refundDeposit = async (userId, swapId, reason = 'escrow_cancelled_refund'
 
 // ─── Propose swap ─────────────────────────────────────────────────────────────
 const proposeSwap = async (initiatorId, data) => {
-  const { receiverId, initiatorListing, receiverListing, proposalNote, agreedValue, topUpAmountKobo, topUpPayerRole } = data;
+  const { receiverId, initiatorListing, receiverListing, proposalNote, agreedValue, topUpAmountKobo, topUpPayerRole, collateralPercent } = data;
 
   if (initiatorId === receiverId) {
     throw Object.assign(new Error('Cannot propose swap to yourself'), { status: 400 });
@@ -75,11 +92,36 @@ const proposeSwap = async (initiatorId, data) => {
 
   const swapType = await inferSwapType(initiatorListing, receiverListing);
 
+  // Fetch listing details: estimated values + swap eligibility threshold
+  const [iL, rL] = await Promise.all([
+    initiatorListing ? Listing.findById(initiatorListing).select('estimatedValue minSwapValue userId') : null,
+    receiverListing  ? Listing.findById(receiverListing).select('estimatedValue minSwapValue userId')  : null,
+  ]);
+
+  // Enforce swap eligibility threshold set by the receiver's listing owner
+  if (rL?.minSwapValue > 0) {
+    const initiatorValue = iL?.estimatedValue || 0;
+    if (initiatorValue < rL.minSwapValue) {
+      throw Object.assign(
+        new Error(`This listing requires your item to be worth at least ₦${rL.minSwapValue.toLocaleString()} to propose a swap`),
+        { status: 403 }
+      );
+    }
+  }
+
+  const escrowDepositKobo = calcDepositKobo(
+    iL?.estimatedValue,
+    rL?.estimatedValue,
+    collateralPercent
+  );
+
   const swap = await Swap.create({
     initiatorId, receiverId,
     initiatorListing, receiverListing,
     proposalNote, agreedValue, swapType,
     status: 'proposed',
+    collateralPercent: collateralPercent || ESCROW_DEFAULT_COLLATERAL_PCT,
+    escrowDepositKobo,
     topUpAmountKobo: topUpAmountKobo || 0,
     topUpPayerRole: topUpPayerRole || 'none',
   });
@@ -123,8 +165,8 @@ const respondToSwap = async (swapId, userId, action) => {
 
   // If cancelling an escrow swap, refund any deposits already paid
   if (newStatus === 'cancelled') {
-    if (swap.initiatorDepositPaid) await _refundDeposit(swap.initiatorId.toString(), swapId);
-    if (swap.receiverDepositPaid)  await _refundDeposit(swap.receiverId.toString(),  swapId);
+    if (swap.initiatorDepositPaid) await _refundDeposit(swap.initiatorId.toString(), swapId, swap.escrowDepositKobo);
+    if (swap.receiverDepositPaid)  await _refundDeposit(swap.receiverId.toString(),  swapId, swap.escrowDepositKobo);
     // Refund top-up if already paid
     if (swap.topUpPaid && swap.topUpAmountKobo > 0 && swap.topUpPayerRole !== 'none') {
       const topUpPayerId = swap.topUpPayerRole === 'initiator'
@@ -206,15 +248,17 @@ const payEscrowDeposit = async (swapId, userId) => {
     throw Object.assign(new Error('You have already paid the escrow deposit'), { status: 409 });
   }
 
+  const { depositKobo } = escrowAmounts(swap.escrowDepositKobo);
+
   // Deduct from wallet atomically
   const user = await User.findOneAndUpdate(
-    { _id: userId, walletBalance: { $gte: ESCROW_DEPOSIT_KOBO } },
-    { $inc: { walletBalance: -ESCROW_DEPOSIT_KOBO } },
+    { _id: userId, walletBalance: { $gte: depositKobo } },
+    { $inc: { walletBalance: -depositKobo } },
     { new: true }
   );
   if (!user) {
     throw Object.assign(
-      new Error(`Insufficient Barter Credits. You need ${(ESCROW_DEPOSIT_KOBO / 100).toLocaleString()} BC to activate escrow.`),
+      new Error(`Insufficient Barter Credits. You need ${(depositKobo / 100).toLocaleString()} BC to pay the escrow collateral.`),
       { status: 402 }
     );
   }
@@ -222,10 +266,10 @@ const payEscrowDeposit = async (swapId, userId) => {
   // Record payment
   await Payment.create({
     userId, swapId,
-    amountKobo: ESCROW_DEPOSIT_KOBO,
+    amountKobo: depositKobo,
     paymentType: 'escrow',
     status: 'success',
-    meta: { role: isInitiator ? 'initiator' : 'receiver' },
+    meta: { role: isInitiator ? 'initiator' : 'receiver', type: 'escrow_deposit' },
   });
 
   if (isInitiator) swap.initiatorDepositPaid = true;
@@ -277,16 +321,18 @@ const confirmCompletion = async (swapId, userId) => {
     if (swap.initiatorListing) await Listing.findByIdAndUpdate(swap.initiatorListing, { status: 'swapped' });
     if (swap.receiverListing)  await Listing.findByIdAndUpdate(swap.receiverListing,  { status: 'swapped' });
 
-    // Refund escrow deposits minus platform fee
+    // Refund escrow deposits minus 2% platform fee
     if (swap.escrowActive && swap.initiatorDepositPaid && swap.receiverDepositPaid) {
+      const { refundKobo, platformFeeKobo } = escrowAmounts(swap.escrowDepositKobo);
       await Promise.all([
-        User.findByIdAndUpdate(swap.initiatorId, { $inc: { walletBalance: ESCROW_REFUND_KOBO } }),
-        User.findByIdAndUpdate(swap.receiverId,  { $inc: { walletBalance: ESCROW_REFUND_KOBO } }),
+        User.findByIdAndUpdate(swap.initiatorId, { $inc: { walletBalance: refundKobo } }),
+        User.findByIdAndUpdate(swap.receiverId,  { $inc: { walletBalance: refundKobo } }),
       ]);
-      // Record refund transactions
+      swap.escrowFeeNgn    = (platformFeeKobo * 2) / 100; // total fee both parties
+      swap.platformFeePaid = true;
       await Payment.insertMany([
-        { userId: swap.initiatorId, swapId, amountKobo: ESCROW_REFUND_KOBO, paymentType: 'escrow', status: 'refunded', meta: { type: 'escrow_completion_refund' } },
-        { userId: swap.receiverId,  swapId, amountKobo: ESCROW_REFUND_KOBO, paymentType: 'escrow', status: 'refunded', meta: { type: 'escrow_completion_refund' } },
+        { userId: swap.initiatorId, swapId, amountKobo: refundKobo, paymentType: 'escrow', status: 'refunded', meta: { type: 'escrow_completion_refund', depositKobo: swap.escrowDepositKobo, platformFeeKobo } },
+        { userId: swap.receiverId,  swapId, amountKobo: refundKobo, paymentType: 'escrow', status: 'refunded', meta: { type: 'escrow_completion_refund', depositKobo: swap.escrowDepositKobo, platformFeeKobo } },
       ]);
     }
 
@@ -400,17 +446,30 @@ const raiseDispute = async (swapId, userId, reason) => {
 };
 
 // ─── Get user swaps ───────────────────────────────────────────────────────────
-const getUserSwaps = async (userId, status) => {
+const getUserSwaps = async (userId, status, page = 1, limit = 20) => {
   const filter = { $or: [{ initiatorId: userId }, { receiverId: userId }] };
   if (status) filter.status = status;
 
-  const swaps = await populateSwap(Swap.find(filter).sort({ updatedAt: -1 }));
-  return swaps.map(s => s.toJSON());
+  const skip  = (page - 1) * limit;
+  const total = await Swap.countDocuments(filter);
+
+  const swaps = await populateSwap(
+    Swap.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit)
+  );
+
+  return {
+    swaps:      swaps.map(s => s.toJSON()),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
 };
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
 module.exports = {
   proposeSwap, getSwap, respondToSwap, setMeetup,
   payEscrowDeposit, confirmCompletion, raiseDispute, getUserSwaps, payTopUp,
-  ESCROW_DEPOSIT_KOBO, ESCROW_PLATFORM_FEE, ESCROW_REFUND_KOBO,
+  ESCROW_PLATFORM_FEE_PCT, ESCROW_MIN_DEPOSIT_KOBO, ESCROW_DEFAULT_COLLATERAL_PCT,
+  escrowAmounts, calcDepositKobo,
 };

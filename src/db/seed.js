@@ -24,9 +24,13 @@ const CATEGORIES = [
 
 // ─── Test users ───────────────────────────────────────────────────────────────
 const TEST_USERS = [
-  { phone: '+2348000000001', fullName: 'Amaka Okafor',  username: 'amaka_swaps',   locationState: 'Lagos',   locationLga: 'Ikeja',           status: 'active' },
-  { phone: '+2348000000002', fullName: 'Chidi Nwosu',   username: 'chidi_trader',  locationState: 'Abuja',   locationLga: 'Garki',           status: 'active' },
-  { phone: '+2348000000003', fullName: 'Fatima Bello',  username: 'fatima_b',      locationState: 'Kano',    locationLga: 'Kano Municipal',  status: 'active' },
+  { phone: '+2348000000001', fullName: 'Amaka Okafor',   username: 'amaka_swaps',   locationState: 'Lagos', locationLga: 'Ikeja',          status: 'active' },
+  { phone: '+2348000000002', fullName: 'Chidi Nwosu',    username: 'chidi_trader',  locationState: 'Abuja', locationLga: 'Garki',          status: 'active' },
+  { phone: '+2348000000003', fullName: 'Fatima Bello',   username: 'fatima_b',      locationState: 'Kano',  locationLga: 'Kano Municipal', status: 'active' },
+  // Fixed-ID dev account — preserved across reseeds
+  { _id: new mongoose.Types.ObjectId('69ffd094b098fffb00cb84ea'),
+    phone: '+2348000000004', fullName: 'Michael Orizu',  username: 'michael_orizu', locationState: 'Lagos', locationLga: 'Lekki',          status: 'active',
+    walletBalance: 50000000 }, // 500,000 BC = ₦500,000
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -422,6 +426,19 @@ async function seed() {
       const wantsCatId = catMap[template.wantsCat] || catMap.others;
       const isBoosted = Math.random() < 0.08;
 
+      // Swap eligibility threshold — higher-value items are more likely to require it
+      // Electronics/vehicles/furniture above ₦100k: 50% chance; ₦50k–₦100k: 30%; below: 10%
+      const HIGH_VALUE_SLUGS = ['electronics', 'vehicles', 'furniture', 'services'];
+      const restrictionChance = baseValue >= 100000
+        ? (HIGH_VALUE_SLUGS.includes(slug) ? 0.55 : 0.35)
+        : baseValue >= 50000
+          ? 0.25
+          : 0.08;
+      // Threshold is 50–80% of the item's own value, rounded to nearest ₦500
+      const minSwapValue = Math.random() < restrictionChance
+        ? roundTo500(Math.round(baseValue * pick([0.5, 0.6, 0.7, 0.8])))
+        : 0;
+
       const listing = {
         userId: user._id,
         title: template.title,
@@ -429,6 +446,7 @@ async function seed() {
         categoryId: catMap[slug] || catMap.others,
         listingType,
         estimatedValue: baseValue,
+        minSwapValue,
         images: [],
         wantsTitle: template.wants,
         wantsDescription: `Looking to swap my ${template.title} for ${template.wants}. Open to negotiation.`,
@@ -460,7 +478,7 @@ async function seed() {
   console.log('Pre-seeded OTP 123456 for all test users');
 
   console.log('\nTest users:');
-  TEST_USERS.forEach(u => console.log(`  ${u.fullName}: ${u.phone} (OTP: 123456)`));
+  TEST_USERS.forEach(u => console.log(`  ${u.fullName}: ${u.phone} (OTP: 123456)${u._id ? ' [fixed _id]' : ''}`));
 
   await mongoose.disconnect();
   console.log('\nSeed complete!');

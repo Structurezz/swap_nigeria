@@ -34,6 +34,7 @@ const listingSchema = new mongoose.Schema(
       enum: ['active', 'paused', 'swapped', 'expired', 'deleted'],
       default: 'active',
     },
+    minSwapValue: { type: Number, default: 0 }, // min estimatedValue (₦) a proposer's listing must have
     isBoosted: { type: Boolean, default: false },
     boostExpires: Date,
     viewCount: { type: Number, default: 0 },

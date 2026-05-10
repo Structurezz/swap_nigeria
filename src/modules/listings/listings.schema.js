@@ -12,6 +12,7 @@ const createListingSchema = z.object({
   wantsCategoryId: z.string().optional(),
   wantsValueMin: z.number().min(0).optional(),
   wantsValueMax: z.number().min(0).optional(),
+  minSwapValue: z.number().min(0).optional(),
   locationState: z.string().optional(),
   locationLga: z.string().optional(),
   locationArea: z.string().optional(),

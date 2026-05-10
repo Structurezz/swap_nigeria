@@ -8,6 +8,7 @@ const proposeSwapSchema = z.object({
   agreedValue: z.number().min(0).optional(),
   topUpAmountKobo: z.number().int().min(0).optional(),
   topUpPayerRole: z.enum(['initiator', 'receiver', 'none']).optional(),
+  collateralPercent: z.number().int().min(1).max(100).optional(),
 });
 
 const respondSwapSchema = z.object({

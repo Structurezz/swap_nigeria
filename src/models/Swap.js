@@ -15,8 +15,9 @@ const swapSchema = new mongoose.Schema(
     },
     meetupLocation: String,
     meetupScheduled: Date,
+    collateralPercent: { type: Number, default: 10, min: 1, max: 100 }, // % of item value staked
     escrowActive: { type: Boolean, default: false },
-    escrowDepositKobo: { type: Number, default: 100000 }, // ₦1,000 per party
+    escrowDepositKobo: { type: Number, default: 100000 }, // calculated per deal
     initiatorDepositPaid: { type: Boolean, default: false },
     receiverDepositPaid: { type: Boolean, default: false },
     escrowInitiatedAt: Date,

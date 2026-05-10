@@ -1,7 +1,7 @@
 const {
   proposeSwap, getSwap, respondToSwap, setMeetup,
   payEscrowDeposit, confirmCompletion, raiseDispute, getUserSwaps, payTopUp,
-  ESCROW_DEPOSIT_KOBO, ESCROW_REFUND_KOBO, ESCROW_PLATFORM_FEE,
+  ESCROW_PLATFORM_FEE_PCT, ESCROW_MIN_DEPOSIT_KOBO, ESCROW_DEFAULT_COLLATERAL_PCT,
 } = require('./swaps.service');
 
 const proposeSwapController = async (req, res, next) => {
@@ -42,13 +42,10 @@ const escrowDepositController = async (req, res, next) => {
 const escrowInfoController = (req, res) => {
   res.json({
     data: {
-      depositKobo:    ESCROW_DEPOSIT_KOBO,
-      refundKobo:     ESCROW_REFUND_KOBO,
-      platformFeeKobo: ESCROW_PLATFORM_FEE,
-      // Legacy fields kept for backward compat
-      depositNgn:     ESCROW_DEPOSIT_KOBO / 100,
-      refundNgn:      ESCROW_REFUND_KOBO  / 100,
-      platformFeeNgn: ESCROW_PLATFORM_FEE / 100,
+      platformFeePct:       ESCROW_PLATFORM_FEE_PCT,        // 0.02
+      platformFeeDisplay:   `${ESCROW_PLATFORM_FEE_PCT * 100}%`, // "2%"
+      minDepositKobo:       ESCROW_MIN_DEPOSIT_KOBO,
+      defaultCollateralPct: ESCROW_DEFAULT_COLLATERAL_PCT,
     },
   });
 };
@@ -69,8 +66,14 @@ const disputeController = async (req, res, next) => {
 
 const getMySwapsController = async (req, res, next) => {
   try {
-    const swaps = await getUserSwaps(req.user.id, req.query.status);
-    res.json({ data: swaps });
+    const { status, page, limit } = req.query;
+    const result = await getUserSwaps(
+      req.user.id,
+      status,
+      page  ? parseInt(page)  : 1,
+      limit ? parseInt(limit) : 20,
+    );
+    res.json({ data: result });
   } catch (err) { next(err); }
 };
 

@@ -3,6 +3,7 @@ const Payment = require('../../models/Payment');
 const Swap = require('../../models/Swap');
 const User = require('../../models/User');
 const Listing = require('../../models/Listing');
+const N = require('../notifications/notifications.service');
 
 let config;
 try {
@@ -245,6 +246,8 @@ const verifyPayment = async (reference) => {
     await User.findByIdAndUpdate(payment.userId, {
       $inc: { walletBalance: payment.amountKobo },
     });
+    // Notify user their wallet was credited
+    N.notifyWalletTopup(payment.userId, payment.amountKobo).catch(() => {});
   }
 
   if (payment.paymentType === 'escrow' && payment.swapId) {

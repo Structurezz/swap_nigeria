@@ -163,7 +163,39 @@ const notifyDisputeRaised = async (swap) => {
   }
 };
 
-// ─── 9. Top-up Required ──────────────────────────────────────────────────────
+// ─── 9. One Party Confirmed ──────────────────────────────────────────────────
+// Notifies the OTHER party that their partner already confirmed — urge them to confirm too
+const notifyOnePartyConfirmed = async (swap, confirmerId) => {
+  const { initiator, receiver, initiatorEmail, receiverEmail } = await resolveEmails(swap);
+  const confirmerIsInitiator = swap.initiatorId.toString() === confirmerId;
+
+  // Notify the one who HAS NOT yet confirmed
+  if (confirmerIsInitiator && receiverEmail && wantsEmail(receiver, 'swapUpdates')) {
+    const tpl = T.onePartyConfirmed({ user: receiver, confirmer: initiator, swap, frontendUrl: FE() });
+    await safeSend(receiverEmail, tpl);
+  } else if (!confirmerIsInitiator && initiatorEmail && wantsEmail(initiator, 'swapUpdates')) {
+    const tpl = T.onePartyConfirmed({ user: initiator, confirmer: receiver, swap, frontendUrl: FE() });
+    await safeSend(initiatorEmail, tpl);
+  }
+};
+
+// ─── 10. Top-up Paid ─────────────────────────────────────────────────────────
+// Notifies the OTHER party (who RECEIVES the top-up) that it has been paid
+const notifyTopUpPaid = async (swap, payerId) => {
+  const { initiator, receiver, initiatorEmail, receiverEmail } = await resolveEmails(swap);
+  const payerIsInitiator = swap.initiatorId.toString() === payerId;
+
+  // Notify the one who receives the top-up (the other party)
+  if (payerIsInitiator && receiverEmail && wantsEmail(receiver, 'swapUpdates')) {
+    const tpl = T.topUpPaid({ user: receiver, payer: initiator, swap, frontendUrl: FE() });
+    await safeSend(receiverEmail, tpl);
+  } else if (!payerIsInitiator && initiatorEmail && wantsEmail(initiator, 'swapUpdates')) {
+    const tpl = T.topUpPaid({ user: initiator, payer: receiver, swap, frontendUrl: FE() });
+    await safeSend(initiatorEmail, tpl);
+  }
+};
+
+// ─── 11. Top-up Required ─────────────────────────────────────────────────────
 const notifyTopUpRequired = async (swap) => {
   const { initiator, receiver, initiatorEmail, receiverEmail } = await resolveEmails(swap);
   const payerIsInitiator = swap.topUpPayerRole === 'initiator';
@@ -175,7 +207,35 @@ const notifyTopUpRequired = async (swap) => {
   }
 };
 
-// ─── 10. Welcome ─────────────────────────────────────────────────────────────
+// ─── 12. Wallet Topup Success ────────────────────────────────────────────────
+const notifyWalletTopup = async (userId, amountKobo) => {
+  const user = await User.findById(userId).select('fullName email phone emailPrefs walletBalance').lean();
+  if (!user?.email) return;
+  if (!wantsEmail(user, 'swapUpdates')) return;
+  const tpl = T.walletTopupSuccess({
+    user,
+    amountKobo,
+    newBalanceKobo: user.walletBalance || 0,
+    frontendUrl: FE(),
+  });
+  await safeSend(user.email, T.injectUrl(tpl, FE()));
+};
+
+// ─── 13. Escrow Reminder ─────────────────────────────────────────────────────
+// Call this from a cron/background job for swaps stuck in `accepted` with only one deposit paid
+const notifyEscrowReminder = async (swap) => {
+  const { initiator, receiver, initiatorEmail, receiverEmail } = await resolveEmails(swap);
+
+  // Only remind the party who hasn't paid yet
+  if (!swap.initiatorDepositPaid && initiatorEmail && wantsEmail(initiator, 'swapUpdates')) {
+    await safeSend(initiatorEmail, T.escrowReminder({ user: initiator, otherUser: receiver, swap, frontendUrl: FE() }));
+  }
+  if (!swap.receiverDepositPaid && receiverEmail && wantsEmail(receiver, 'swapUpdates')) {
+    await safeSend(receiverEmail, T.escrowReminder({ user: receiver, otherUser: initiator, swap, frontendUrl: FE() }));
+  }
+};
+
+// ─── 14. Welcome ─────────────────────────────────────────────────────────────
 const notifyWelcome = async (userId) => {
   const user = await User.findById(userId).select('fullName email phone emailPrefs');
   const email = user?.email || null;
@@ -360,9 +420,13 @@ module.exports = {
   notifyMeetupSet,
   notifyEscrowDepositPaid,
   notifyEscrowActivated,
+  notifyOnePartyConfirmed,
   notifySwapCompleted,
   notifyDisputeRaised,
   notifyTopUpRequired,
+  notifyTopUpPaid,
+  notifyWalletTopup,
+  notifyEscrowReminder,
   notifyWelcome,
   sendBatchDigest,
   sendMorningDigest,

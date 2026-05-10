@@ -157,6 +157,7 @@ const respondToSwap = async (swapId, userId, action) => {
   if (!isInitiator && !isReceiver) throw Object.assign(new Error('Not a participant'), { status: 403 });
 
   const newStatus = action === 'accept' ? 'accepted' : 'cancelled';
+  const prevStatus = swap.status; // capture before mutation
 
   if (action === 'accept' && !isReceiver) {
     throw Object.assign(new Error('Only the receiver can accept'), { status: 403 });
@@ -193,7 +194,7 @@ const respondToSwap = async (swapId, userId, action) => {
   const otherId = isInitiator ? swap.receiverId.toString() : swap.initiatorId.toString();
   emitSwapEvent('swap:updated', [otherId], result);
   if (newStatus === 'accepted') N.notifySwapAccepted(result).catch(() => {});
-  if (newStatus === 'cancelled') N.notifySwapCancelled(result, userId, swap.status === 'proposed').catch(() => {});
+  if (newStatus === 'cancelled') N.notifySwapCancelled(result, userId, prevStatus === 'proposed').catch(() => {});
   return result;
 };
 
@@ -369,7 +370,12 @@ const confirmCompletion = async (swapId, userId) => {
   const populated = await populateSwap(Swap.findById(swap._id));
   const result = populated.toJSON();
   emitSwapEvent('swap:updated', [swap.initiatorId.toString(), swap.receiverId.toString()], result);
-  if (result.status === 'completed') N.notifySwapCompleted(result).catch(() => {});
+  if (result.status === 'completed') {
+    N.notifySwapCompleted(result).catch(() => {});
+  } else {
+    // One party confirmed but swap not yet complete — nudge the other party
+    N.notifyOnePartyConfirmed(result, userId).catch(() => {});
+  }
   return result;
 };
 
@@ -426,6 +432,8 @@ const payTopUp = async (swapId, userId) => {
   const populated = await populateSwap(Swap.findById(swap._id));
   const result = populated.toJSON();
   emitSwapEvent('swap:updated', [swap.initiatorId.toString(), swap.receiverId.toString()], result);
+  // Notify the receiving party that the top-up was paid
+  N.notifyTopUpPaid(result, userId).catch(() => {});
   return result;
 };
 

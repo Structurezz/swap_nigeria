@@ -71,9 +71,12 @@ const verifyOtpAndLogin = async (phone, code) => {
     user = await User.create({ phone, status: 'active', referralCode: generateReferralCode() });
   } else if (user.status === 'suspended') {
     throw Object.assign(new Error('Account suspended. Contact support'), { status: 403 });
-  } else if (user.status === 'pending') {
-    user.status = 'active';
-    await user.save();
+  } else {
+    // Backfill missing referral code for existing users
+    const needsSave = !user.referralCode || user.status === 'pending';
+    if (!user.referralCode) user.referralCode = generateReferralCode();
+    if (user.status === 'pending') user.status = 'active';
+    if (needsSave) await user.save();
   }
 
   const { accessToken, refreshToken } = await buildTokens(user);
@@ -119,6 +122,12 @@ const loginWithEmail = async ({ email, password }) => {
 
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) throw Object.assign(new Error('Invalid email or password'), { status: 401 });
+
+  // Backfill missing referral code for existing users
+  if (!user.referralCode) {
+    user.referralCode = generateReferralCode();
+    await user.save();
+  }
 
   const { accessToken, refreshToken } = await buildTokens(user);
   return { accessToken, refreshToken, user: user.toJSON(), isNewUser: false };

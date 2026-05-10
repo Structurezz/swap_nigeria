@@ -6,6 +6,7 @@ const { generateOtp, storeOtp, verifyOtp } = require('../../utils/otp');
 const { sendOtpSms } = require('../../utils/notifications');
 const { sendOtpEmail, sendPasswordResetEmail } = require('../../utils/email');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../../utils/jwt');
+const { notifyWelcome } = require('../notifications/notifications.service');
 
 let config;
 try {
@@ -76,6 +77,8 @@ const verifyOtpAndLogin = async (phone, code) => {
   }
 
   const { accessToken, refreshToken } = await buildTokens(user);
+  // Welcome email for new users — no-op if they haven't added an email yet
+  if (isNewUser) notifyWelcome(user._id).catch(() => {});
   return { accessToken, refreshToken, user: user.toJSON(), isNewUser };
 };
 
@@ -100,6 +103,8 @@ const register = async ({ email, password, fullName, phone }) => {
   });
 
   const { accessToken, refreshToken } = await buildTokens(user);
+  // Send welcome email (non-blocking)
+  notifyWelcome(user._id).catch(() => {});
   return { accessToken, refreshToken, user: user.toJSON(), isNewUser: true };
 };
 

@@ -1,6 +1,7 @@
 const User = require('../../models/User');
 const Listing = require('../../models/Listing');
 const Review = require('../../models/Review');
+const { notifyWelcome } = require('../notifications/notifications.service');
 
 const getProfile = async (userId) => {
   const user = await User.findById(userId).select('-__v');
@@ -14,8 +15,19 @@ const updateProfile = async (userId, updates) => {
     if (existing) throw Object.assign(new Error('Username already taken'), { status: 409 });
   }
 
+  // Detect if user is adding their email for the first time
+  const hadEmail = updates.email
+    ? (await User.findById(userId).select('email').lean())?.email
+    : true; // not setting email, skip check
+
   const user = await User.findByIdAndUpdate(userId, updates, { new: true, runValidators: true });
   if (!user) throw Object.assign(new Error('User not found'), { status: 404 });
+
+  // First-time email → send welcome
+  if (updates.email && !hadEmail) {
+    notifyWelcome(userId).catch(() => {});
+  }
+
   return user.toJSON();
 };
 

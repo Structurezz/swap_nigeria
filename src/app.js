@@ -67,32 +67,38 @@ app.use('/api/admin',          require('./modules/admin/admin.routes'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
-// GridFS file serving
-app.get('/api/files/:id', async (req, res, next) => {
+// GridFS file serving — stream directly, skip extra metadata query
+app.get('/api/files/:id', (req, res) => {
+  const mongoose = require('mongoose');
+  const { ObjectId } = mongoose.Types;
+
+  let fileId;
   try {
-    const mongoose = require('mongoose');
-    const { ObjectId } = mongoose.Types;
-
-    let fileId;
-    try {
-      fileId = new ObjectId(req.params.id);
-    } catch {
-      return res.status(400).json({ error: 'Invalid file id' });
-    }
-
-    const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
-      bucketName: 'uploads',
-    });
-
-    const files = await bucket.find({ _id: fileId }).toArray();
-    if (!files.length) return res.status(404).json({ error: 'File not found' });
-
-    res.set('Content-Type', files[0].contentType || 'application/octet-stream');
-    res.set('Cache-Control', 'public, max-age=31536000');
-    bucket.openDownloadStream(fileId).pipe(res);
-  } catch (err) {
-    next(err);
+    fileId = new ObjectId(req.params.id);
+  } catch {
+    return res.status(400).json({ error: 'Invalid file id' });
   }
+
+  // Use ETag = file ID (content is immutable once uploaded)
+  const etag = `"${req.params.id}"`;
+  if (req.headers['if-none-match'] === etag) {
+    return res.status(304).end();
+  }
+
+  const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+    bucketName: 'uploads',
+  });
+
+  const stream = bucket.openDownloadStream(fileId);
+
+  stream.once('file', (file) => {
+    res.set('Content-Type', file.contentType || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    res.set('ETag', etag);
+  });
+
+  stream.on('error', () => res.status(404).json({ error: 'File not found' }));
+  stream.pipe(res);
 });
 
 app.use(errorHandler);

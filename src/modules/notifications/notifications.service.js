@@ -107,15 +107,15 @@ const notifySwapCancelled = async (swap, actorId, isDecline = false) => {
   }
 };
 
-// ─── 4. Meetup Set ────────────────────────────────────────────────────────────
-const notifyMeetupSet = async (swap, actorId) => {
+// ─── 4. Shipment Submitted ────────────────────────────────────────────────────
+const notifyShipmentSubmitted = async (swap, actorId) => {
   const { initiator, receiver, initiatorEmail, receiverEmail } = await resolveEmails(swap);
   const actorIsInitiator = sid(swap.initiatorId) === actorId;
 
   if (actorIsInitiator && receiverEmail && wantsEmail(receiver, 'swapUpdates')) {
-    await safeSend(receiverEmail, T.meetupSet({ user: receiver, setter: initiator, swap, frontendUrl: FE() }));
+    await safeSend(receiverEmail, T.shipmentSubmitted({ user: receiver, shipper: initiator, swap, frontendUrl: FE() }));
   } else if (!actorIsInitiator && initiatorEmail && wantsEmail(initiator, 'swapUpdates')) {
-    await safeSend(initiatorEmail, T.meetupSet({ user: initiator, setter: receiver, swap, frontendUrl: FE() }));
+    await safeSend(initiatorEmail, T.shipmentSubmitted({ user: initiator, shipper: receiver, swap, frontendUrl: FE() }));
   }
 };
 
@@ -279,7 +279,7 @@ const buildDigestData = async (userId) => {
   // All active swaps for this user
   const mySwaps = await Swap.find({
     $or: [{ initiatorId: userId }, { receiverId: userId }],
-    status: { $in: ['proposed', 'accepted', 'meetup_set', 'in_escrow'] },
+    status: { $in: ['proposed', 'accepted', 'in_escrow', 'shipped'] },
   })
     .populate('initiatorId', 'fullName avatarUrl')
     .populate('receiverId',  'fullName avatarUrl')
@@ -308,17 +308,9 @@ const buildDigestData = async (userId) => {
      (!s.isInitiator && !s.receiverDepositPaid))
   );
 
-  // Upcoming meetups (in next 48h)
-  const tomorrow48 = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-  const upcomingMeetups = enriched.filter(s =>
-    s.meetupScheduled &&
-    new Date(s.meetupScheduled) >= now &&
-    new Date(s.meetupScheduled) <= tomorrow48
-  );
-
   // Swaps where they confirmed but I haven't
   const awaitingConfirm = enriched.filter(s =>
-    ['meetup_set', 'in_escrow'].includes(s.status) &&
+    ['in_escrow', 'shipped'].includes(s.status) &&
     ((s.isInitiator && !s.initiatorConfirmed && s.receiverConfirmed) ||
      (!s.isInitiator && !s.receiverConfirmed && s.initiatorConfirmed))
   );
@@ -360,7 +352,7 @@ const buildDigestData = async (userId) => {
 
   return {
     user,
-    pendingActions: { pendingProposals, awaitingEscrow, upcomingMeetups, awaitingConfirm },
+    pendingActions: { pendingProposals, awaitingEscrow, awaitingConfirm },
     stats: {
       swapsThisWeek,
       activeSwaps: enriched.length,
@@ -440,7 +432,7 @@ module.exports = {
   notifySwapProposed,
   notifySwapAccepted,
   notifySwapCancelled,
-  notifyMeetupSet,
+  notifyShipmentSubmitted,
   notifyEscrowDepositPaid,
   notifyEscrowActivated,
   notifyOnePartyConfirmed,

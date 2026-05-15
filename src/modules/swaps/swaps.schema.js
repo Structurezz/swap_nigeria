@@ -15,13 +15,37 @@ const respondSwapSchema = z.object({
   action: z.enum(['accept', 'cancel']),
 });
 
-const setMeetupSchema = z.object({
-  meetupLocation: z.string().min(3),
-  meetupScheduled: z.string().datetime(),
+const setAddressSchema = z.object({
+  fullName:     z.string().min(2).max(100),
+  phone:        z.string().min(7).max(20),
+  addressLine1: z.string().min(3).max(200),
+  addressLine2: z.string().max(200).optional(),
+  city:         z.string().min(2).max(100),
+  state:        z.string().min(2).max(100),
+  landmark:     z.string().max(200).optional(),
+});
+
+const DELIVERY_PROVIDERS = [
+  'gig', 'kwik', 'sendbox', 'dhl', 'fedex',
+  'nipost', 'red_star', 'chisco', 'abc', 'other',
+];
+
+const submitShipmentSchema = z.object({
+  provider:          z.enum(DELIVERY_PROVIDERS),
+  providerLabel:     z.string().min(2).max(100),
+  trackingNumber:    z.string().min(3).max(100),
+  trackingUrl:       z.string().url().optional(),
+  estimatedDelivery: z.string().datetime().optional(),
+  proofImages:       z.array(z.string().url()).max(5).optional(),
+  notes:             z.string().max(500).optional(),
 });
 
 const disputeSchema = z.object({
   reason: z.string().min(10).max(1000),
 });
 
-module.exports = { proposeSwapSchema, respondSwapSchema, setMeetupSchema, disputeSchema };
+module.exports = {
+  proposeSwapSchema, respondSwapSchema,
+  setAddressSchema, submitShipmentSchema,
+  disputeSchema,
+};

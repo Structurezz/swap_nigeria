@@ -1091,9 +1091,51 @@ const injectUrl = (tpl, frontendUrl) => ({
   html: tpl.html.replace(/%%FRONTEND_URL%%/g, frontendUrl),
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Shipment Submitted → other party
+// ═══════════════════════════════════════════════════════════════════════════════
+const shipmentSubmitted = ({ user, shipper, swap, frontendUrl }) => {
+  const name = user.fullName?.split(' ')[0] || 'there';
+  const subject = `📦 ${shipper?.fullName || 'Your swap partner'} has shipped your item`;
+
+  const html = base(`
+    ${hi(name)}
+    <p style="margin:4px 0 20px;font-size:15px;color:${GR};line-height:1.7;">
+      <strong style="color:${DK};">${shipper?.fullName || 'Your swap partner'}</strong> has dispatched their item and submitted tracking info.
+      Your package is on its way!
+    </p>
+
+    ${swapSummary(swap, 'receiver')}
+
+    <div style="background:${GL};border:1px solid #6EE7B7;border-radius:14px;padding:20px;margin-bottom:20px;">
+      <p style="margin:0 0 14px;font-size:13px;font-weight:700;color:${G};text-transform:uppercase;letter-spacing:0.5px;">🚚 Shipment Details</p>
+      ${swap.initiatorShipment?.trackingNumber || swap.receiverShipment?.trackingNumber ? `
+      <p style="margin:0 0 6px;font-size:14px;color:${DK};">
+        <strong>Courier:</strong> ${swap.initiatorShipment?.providerLabel || swap.receiverShipment?.providerLabel || 'N/A'}
+      </p>
+      <p style="margin:0;font-size:14px;color:${DK};">
+        <strong>Tracking #:</strong> ${swap.initiatorShipment?.trackingNumber || swap.receiverShipment?.trackingNumber || 'N/A'}
+      </p>` : '<p style="margin:0;font-size:14px;color:#6B7280;">Tracking details available in app.</p>'}
+    </div>
+
+    <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:14px 16px;margin-bottom:24px;">
+      <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#92400E;">⚠️ Safety reminder:</p>
+      <ul style="margin:0;padding-left:18px;font-size:12px;color:#78350F;line-height:2.2;">
+        <li>Inspect the item carefully when it arrives</li>
+        <li>Only confirm receipt when you're satisfied with the item</li>
+        <li>Raise a dispute in the app if there's any issue — your escrow funds are protected</li>
+      </ul>
+    </div>
+
+    ${cta('View Swap', '%%FRONTEND_URL%%/swaps')}
+  `);
+
+  return { subject, html };
+};
+
 module.exports = {
   swapProposed, swapAccepted, swapDeclined, swapCancelled,
-  meetupSet,
+  meetupSet, shipmentSubmitted,
   escrowDepositNeeded, escrowActivated,
   onePartyConfirmed, swapCompleted,
   topUpRequired, topUpPaid,

@@ -29,10 +29,10 @@ const calcDepositKobo = (initiatorEstimatedValue, receiverEstimatedValue, collat
 
 // ─── State machine ────────────────────────────────────────────────────────────
 const ALLOWED_TRANSITIONS = {
-  proposed:    ['accepted', 'cancelled'],
-  accepted:    ['meetup_set', 'in_escrow', 'cancelled', 'disputed'],
-  meetup_set:  ['completed', 'cancelled', 'disputed'],
-  in_escrow:   ['completed', 'disputed', 'cancelled'],
+  proposed:  ['accepted', 'cancelled'],
+  accepted:  ['in_escrow', 'cancelled', 'disputed'],
+  in_escrow: ['shipped', 'disputed', 'cancelled'],
+  shipped:   ['completed', 'disputed', 'cancelled'],
 };
 
 const canTransition = (from, to) => (ALLOWED_TRANSITIONS[from] || []).includes(to);
@@ -198,39 +198,79 @@ const respondToSwap = async (swapId, userId, action) => {
   return result;
 };
 
-// ─── Set meetup ───────────────────────────────────────────────────────────────
-const setMeetup = async (swapId, userId, meetupData) => {
+// ─── Set delivery address ─────────────────────────────────────────────────────
+const setDeliveryAddress = async (swapId, userId, addressData) => {
   const swap = await Swap.findById(swapId);
   if (!swap) throw Object.assign(new Error('Swap not found'), { status: 404 });
 
-  const isParticipant =
-    swap.initiatorId.toString() === userId ||
-    swap.receiverId.toString()  === userId;
-  if (!isParticipant) throw Object.assign(new Error('Not a participant'), { status: 403 });
+  const isInitiator = swap.initiatorId.toString() === userId;
+  const isReceiver  = swap.receiverId.toString()  === userId;
+  if (!isInitiator && !isReceiver) throw Object.assign(new Error('Not a participant'), { status: 403 });
 
-  // Allow setting meetup from both accepted and in_escrow
   if (!['accepted', 'in_escrow'].includes(swap.status)) {
-    throw Object.assign(new Error(`Cannot set meetup from status: ${swap.status}`), { status: 400 });
+    throw Object.assign(new Error(`Cannot set address at this stage`), { status: 400 });
   }
 
-  swap.meetupLocation  = meetupData.meetupLocation;
-  swap.meetupScheduled = new Date(meetupData.meetupScheduled);
-
-  // Only transition to meetup_set if not using escrow
-  if (swap.status === 'accepted') {
-    swap.status = 'meetup_set';
+  if (isInitiator) {
+    swap.initiatorAddress    = addressData;
+    swap.initiatorAddressSet = true;
+  } else {
+    swap.receiverAddress    = addressData;
+    swap.receiverAddressSet = true;
   }
-  // If in_escrow, keep status but record meetup details
 
   await swap.save();
 
   const populated = await populateSwap(Swap.findById(swap._id));
   const result = populated.toJSON();
-  const otherId = swap.initiatorId.toString() === userId
-    ? swap.receiverId.toString()
-    : swap.initiatorId.toString();
+  const otherId = isInitiator ? swap.receiverId.toString() : swap.initiatorId.toString();
   emitSwapEvent('swap:updated', [otherId], result);
-  N.notifyMeetupSet(result, userId).catch(() => {});
+  return result;
+};
+
+// ─── Submit shipment tracking ─────────────────────────────────────────────────
+const submitShipment = async (swapId, userId, shipmentData) => {
+  const swap = await Swap.findById(swapId);
+  if (!swap) throw Object.assign(new Error('Swap not found'), { status: 404 });
+
+  const isInitiator = swap.initiatorId.toString() === userId;
+  const isReceiver  = swap.receiverId.toString()  === userId;
+  if (!isInitiator && !isReceiver) throw Object.assign(new Error('Not a participant'), { status: 403 });
+
+  if (swap.status !== 'in_escrow') {
+    throw Object.assign(new Error('Shipment can only be submitted after escrow is active'), { status: 400 });
+  }
+
+  const shipment = {
+    provider:          shipmentData.provider,
+    providerLabel:     shipmentData.providerLabel,
+    trackingNumber:    shipmentData.trackingNumber,
+    trackingUrl:       shipmentData.trackingUrl || null,
+    shippedAt:         new Date(),
+    estimatedDelivery: shipmentData.estimatedDelivery ? new Date(shipmentData.estimatedDelivery) : null,
+    proofImages:       shipmentData.proofImages || [],
+    notes:             shipmentData.notes || null,
+  };
+
+  if (isInitiator) {
+    swap.initiatorShipment = shipment;
+    swap.initiatorShipped  = true;
+  } else {
+    swap.receiverShipment = shipment;
+    swap.receiverShipped  = true;
+  }
+
+  // Transition to shipped when both parties have dispatched their items
+  if (swap.initiatorShipped && swap.receiverShipped) {
+    swap.status = 'shipped';
+  }
+
+  await swap.save();
+
+  const populated = await populateSwap(Swap.findById(swap._id));
+  const result = populated.toJSON();
+  emitSwapEvent('swap:updated', [swap.initiatorId.toString(), swap.receiverId.toString()], result);
+  N.notifyShipmentSubmitted(result, userId).catch(() => {});
   return result;
 };
 
@@ -311,7 +351,7 @@ const confirmCompletion = async (swapId, userId) => {
   const isReceiver  = swap.receiverId.toString()  === userId;
   if (!isInitiator && !isReceiver) throw Object.assign(new Error('Not a participant'), { status: 403 });
 
-  if (!['meetup_set', 'in_escrow'].includes(swap.status)) {
+  if (!['in_escrow', 'shipped'].includes(swap.status)) {
     throw Object.assign(new Error('Swap cannot be confirmed at this stage'), { status: 400 });
   }
 
@@ -490,7 +530,8 @@ const getUserSwaps = async (userId, status, page = 1, limit = 20) => {
 
 // ─── Exports ──────────────────────────────────────────────────────────────────
 module.exports = {
-  proposeSwap, getSwap, respondToSwap, setMeetup,
+  proposeSwap, getSwap, respondToSwap,
+  setDeliveryAddress, submitShipment,
   payEscrowDeposit, confirmCompletion, raiseDispute, getUserSwaps, payTopUp,
   ESCROW_PLATFORM_FEE_PCT, ESCROW_MIN_DEPOSIT_KOBO, ESCROW_DEFAULT_COLLATERAL_PCT,
   escrowAmounts, calcDepositKobo,

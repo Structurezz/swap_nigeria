@@ -1,5 +1,6 @@
 const {
-  proposeSwap, getSwap, respondToSwap, setMeetup,
+  proposeSwap, getSwap, respondToSwap,
+  setDeliveryAddress, submitShipment,
   payEscrowDeposit, confirmCompletion, raiseDispute, getUserSwaps, payTopUp,
   ESCROW_PLATFORM_FEE_PCT, ESCROW_MIN_DEPOSIT_KOBO, ESCROW_DEFAULT_COLLATERAL_PCT,
 } = require('./swaps.service');
@@ -25,9 +26,16 @@ const respondController = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-const setMeetupController = async (req, res, next) => {
+const setAddressController = async (req, res, next) => {
   try {
-    const swap = await setMeetup(req.params.id, req.user.id, req.body);
+    const swap = await setDeliveryAddress(req.params.id, req.user.id, req.body);
+    res.json({ data: swap });
+  } catch (err) { next(err); }
+};
+
+const submitShipmentController = async (req, res, next) => {
+  try {
+    const swap = await submitShipment(req.params.id, req.user.id, req.body);
     res.json({ data: swap });
   } catch (err) { next(err); }
 };
@@ -86,6 +94,7 @@ const topUpController = async (req, res, next) => {
 
 module.exports = {
   proposeSwapController, getSwapController, respondController,
-  setMeetupController, escrowDepositController, escrowInfoController,
+  setAddressController, submitShipmentController,
+  escrowDepositController, escrowInfoController,
   confirmController, disputeController, getMySwapsController, topUpController,
 };

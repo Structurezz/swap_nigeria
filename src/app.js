@@ -63,6 +63,7 @@ app.use('/api/messages', require('./modules/messages/messages.routes'));
 app.use('/api/reviews', require('./modules/reviews/reviews.routes'));
 app.use('/api/payments',       require('./modules/payments/payments.routes'));
 app.use('/api/notifications',  require('./modules/notifications/notifications.routes'));
+app.use('/api/admin',          require('./modules/admin/admin.routes'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 

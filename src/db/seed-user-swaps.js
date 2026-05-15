@@ -27,13 +27,23 @@ function future(days) { return new Date(Date.now() + days * 86400 * 1000); }
 function pick(arr)     { return arr[Math.floor(Math.random() * arr.length)]; }
 function rand(min,max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 
-const LOCATIONS = [
-  'Shoprite Lekki, Lagos', 'Computer Village, Ikeja, Lagos',
-  'Ikeja City Mall, Lagos', 'Banex Plaza, Wuse 2, Abuja',
-  'Wuse Market, Abuja', 'Maitama Mall, Abuja',
-  'Kano City Mall, Kano', 'CBD Plaza, Kano',
-  'Balogun Market, Lagos Island', 'Area 11 Shoprite, Abuja',
+const COURIERS_SEED = [
+  { provider: 'gig',      providerLabel: 'GIG Logistics' },
+  { provider: 'kwik',     providerLabel: 'Kwik Delivery' },
+  { provider: 'sendbox',  providerLabel: 'Sendbox' },
+  { provider: 'dhl',      providerLabel: 'DHL Nigeria' },
+  { provider: 'red_star', providerLabel: 'Red Star Express' },
 ];
+
+const SEED_ADDR = {
+  fullName: 'Amaka Obi', phone: '+2348000000001',
+  addressLine1: '5 Marina Street', city: 'Lagos Island', state: 'Lagos',
+};
+
+const mockShip = () => {
+  const c = pick(COURIERS_SEED);
+  return { ...c, trackingNumber: `TRK${Math.floor(Math.random() * 9000000 + 1000000)}`, shippedAt: ago(rand(1, 3)) };
+};
 
 const NOTES = [
   'Looking forward to this swap!',
@@ -204,43 +214,67 @@ async function seedUserSwaps() {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // MEETUP SET — 6 swaps
+  // SHIPPED — 6 swaps (both parties shipped, awaiting receipt confirmation)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // 9. Meetup set, neither confirmed yet — I need to show up and confirm
+  function calcDeposit(iListing, rListing, pct = 10) {
+    const maxVal = Math.max(iListing?.estimatedValue || 0, rListing?.estimatedValue || 0);
+    if (maxVal <= 0) return 50000;
+    return Math.max(50000, Math.round(maxVal * (pct / 100)) * 100);
+  }
+
+  // 9. Shipped, neither confirmed receipt yet
   for (let i = 0; i < 2; i++) {
-    const peer = nextPeer(i);
+    const peer = nextPeer(i); const escrowAt = ago(rand(4,8));
+    const iL = ML(idx), rL = PL(peer,idx+1);
     swaps.push({
       initiatorId: target._id, receiverId: peer._id,
-      initiatorListing: ML(idx)._id, receiverListing: PL(peer,idx+1)._id,
-      proposalNote: pick(NOTES), swapType: pick(SWAP_TYPES), status: 'meetup_set',
-      meetupLocation: pick(LOCATIONS), meetupScheduled: future(rand(1,4)),
+      initiatorListing: iL._id, receiverListing: rL._id,
+      proposalNote: pick(NOTES), swapType: pick(SWAP_TYPES), status: 'shipped',
+      escrowActive: true, escrowDepositKobo: calcDeposit(iL, rL), collateralPercent: 10,
+      initiatorDepositPaid: true, receiverDepositPaid: true, escrowInitiatedAt: escrowAt,
+      initiatorAddressSet: true, receiverAddressSet: true,
+      initiatorAddress: SEED_ADDR, receiverAddress: SEED_ADDR,
+      initiatorShipped: true, receiverShipped: true,
+      initiatorShipment: mockShip(), receiverShipment: mockShip(),
       initiatorConfirmed: false, receiverConfirmed: false,
       createdAt: ago(rand(5,10)), updatedAt: ago(rand(1,3)),
     }); idx += 2;
   }
 
-  // 10. They already confirmed receipt — I am LAST to confirm
+  // 10. They confirmed receipt — I am LAST to confirm
   for (let i = 0; i < 2; i++) {
-    const peer = nextPeer(i+1);
+    const peer = nextPeer(i+1); const escrowAt = ago(rand(4,8));
+    const iL = PL(peer,idx), rL = ML(idx+1);
     swaps.push({
       initiatorId: peer._id, receiverId: target._id,
-      initiatorListing: PL(peer,idx)._id, receiverListing: ML(idx+1)._id,
-      proposalNote: pick(NOTES), swapType: pick(SWAP_TYPES), status: 'meetup_set',
-      meetupLocation: pick(LOCATIONS), meetupScheduled: ago(rand(1,2)),
+      initiatorListing: iL._id, receiverListing: rL._id,
+      proposalNote: pick(NOTES), swapType: pick(SWAP_TYPES), status: 'shipped',
+      escrowActive: true, escrowDepositKobo: calcDeposit(iL, rL), collateralPercent: 10,
+      initiatorDepositPaid: true, receiverDepositPaid: true, escrowInitiatedAt: escrowAt,
+      initiatorAddressSet: true, receiverAddressSet: true,
+      initiatorAddress: SEED_ADDR, receiverAddress: SEED_ADDR,
+      initiatorShipped: true, receiverShipped: true,
+      initiatorShipment: mockShip(), receiverShipment: mockShip(),
       initiatorConfirmed: true, receiverConfirmed: false,
       createdAt: ago(rand(7,12)), updatedAt: ago(rand(1,2)),
     }); idx += 2;
   }
 
-  // 11. I already confirmed — WAITING for them to confirm
+  // 11. I confirmed — WAITING for them to confirm
   for (let i = 0; i < 2; i++) {
-    const peer = nextPeer(i+2);
+    const peer = nextPeer(i+2); const escrowAt = ago(rand(4,8));
+    const iL = ML(idx), rL = PL(peer,idx+1);
     swaps.push({
       initiatorId: target._id, receiverId: peer._id,
-      initiatorListing: ML(idx)._id, receiverListing: PL(peer,idx+1)._id,
-      proposalNote: pick(NOTES), swapType: pick(SWAP_TYPES), status: 'meetup_set',
-      meetupLocation: pick(LOCATIONS), meetupScheduled: ago(rand(1,2)),
+      initiatorListing: iL._id, receiverListing: rL._id,
+      proposalNote: pick(NOTES), swapType: pick(SWAP_TYPES), status: 'shipped',
+      escrowActive: true, escrowDepositKobo: calcDeposit(iL, rL), collateralPercent: 10,
+      initiatorDepositPaid: true, receiverDepositPaid: true, escrowInitiatedAt: escrowAt,
+      initiatorAddressSet: true, receiverAddressSet: true,
+      initiatorAddress: SEED_ADDR, receiverAddress: SEED_ADDR,
+      initiatorShipped: true, receiverShipped: true,
+      initiatorShipment: mockShip(), receiverShipment: mockShip(),
       initiatorConfirmed: true, receiverConfirmed: false,
       createdAt: ago(rand(7,12)), updatedAt: ago(rand(1,2)),
     }); idx += 2;
@@ -250,11 +284,6 @@ async function seedUserSwaps() {
   // IN ESCROW — 8 swaps
   // ═══════════════════════════════════════════════════════════════════════════
 
-  function calcDeposit(iListing, rListing, pct = 10) {
-    const maxVal = Math.max(iListing?.estimatedValue || 0, rListing?.estimatedValue || 0);
-    if (maxVal <= 0) return 50000;
-    return Math.max(50000, Math.round(maxVal * (pct / 100)) * 100);
-  }
   const escrowBase = (iL, rL) => ({
     escrowActive: true,
     escrowDepositKobo: calcDeposit(iL, rL, pick([5,10,15,20])),
@@ -263,7 +292,7 @@ async function seedUserSwaps() {
     receiverDepositPaid: true,
   });
 
-  // 12. Escrow active, meetup set — neither confirmed yet, I need to confirm
+  // 12. Escrow active — both set addresses, neither shipped yet
   for (let i = 0; i < 2; i++) {
     const peer = nextPeer(i); const escrowAt = ago(rand(2,5));
     const iL = ML(idx), rL = PL(peer,idx+1);
@@ -272,7 +301,8 @@ async function seedUserSwaps() {
       initiatorListing: iL._id, receiverListing: rL._id,
       proposalNote: pick(NOTES), swapType: pick(SWAP_TYPES), status: 'in_escrow',
       ...escrowBase(iL, rL), escrowInitiatedAt: escrowAt,
-      meetupLocation: pick(LOCATIONS), meetupScheduled: future(rand(1,3)),
+      initiatorAddressSet: true, receiverAddressSet: true,
+      initiatorAddress: SEED_ADDR, receiverAddress: SEED_ADDR,
       initiatorConfirmed: false, receiverConfirmed: false,
       createdAt: ago(rand(6,12)), updatedAt: escrowAt,
     }); idx += 2;
@@ -287,7 +317,8 @@ async function seedUserSwaps() {
       initiatorListing: iL._id, receiverListing: rL._id,
       proposalNote: pick(NOTES), swapType: pick(SWAP_TYPES), status: 'in_escrow',
       ...escrowBase(iL, rL), escrowInitiatedAt: escrowAt,
-      meetupLocation: pick(LOCATIONS), meetupScheduled: ago(rand(1,2)),
+      initiatorAddressSet: true, receiverAddressSet: true,
+      initiatorAddress: SEED_ADDR, receiverAddress: SEED_ADDR,
       initiatorConfirmed: true, receiverConfirmed: false,
       createdAt: ago(rand(8,14)), updatedAt: escrowAt,
     }); idx += 2;
@@ -302,7 +333,8 @@ async function seedUserSwaps() {
       initiatorListing: iL._id, receiverListing: rL._id,
       proposalNote: pick(NOTES), swapType: pick(SWAP_TYPES), status: 'in_escrow',
       ...escrowBase(iL, rL), escrowInitiatedAt: escrowAt,
-      meetupLocation: pick(LOCATIONS), meetupScheduled: ago(rand(1,2)),
+      initiatorAddressSet: true, receiverAddressSet: true,
+      initiatorAddress: SEED_ADDR, receiverAddress: SEED_ADDR,
       initiatorConfirmed: true, receiverConfirmed: false,
       createdAt: ago(rand(8,14)), updatedAt: escrowAt,
     }); idx += 2;
@@ -318,7 +350,8 @@ async function seedUserSwaps() {
       proposalNote: pick(NOTES), swapType: pick(SWAP_TYPES), status: 'in_escrow',
       ...escrowBase(iL, rL), escrowInitiatedAt: escrowAt,
       topUpAmountKobo: rand(8,25)*1000, topUpPayerRole: 'initiator', topUpPaid: false,
-      meetupLocation: pick(LOCATIONS), meetupScheduled: future(rand(1,3)),
+      initiatorAddressSet: true, receiverAddressSet: true,
+      initiatorAddress: SEED_ADDR, receiverAddress: SEED_ADDR,
       initiatorConfirmed: false, receiverConfirmed: false,
       createdAt: ago(rand(5,10)), updatedAt: escrowAt,
     }); idx += 2;
@@ -334,7 +367,8 @@ async function seedUserSwaps() {
       proposalNote: pick(NOTES), swapType: pick(SWAP_TYPES), status: 'in_escrow',
       ...escrowBase(iL, rL), escrowInitiatedAt: escrowAt,
       topUpAmountKobo: rand(8,25)*1000, topUpPayerRole: 'initiator', topUpPaid: false,
-      meetupLocation: pick(LOCATIONS), meetupScheduled: future(rand(1,3)),
+      initiatorAddressSet: true, receiverAddressSet: true,
+      initiatorAddress: SEED_ADDR, receiverAddress: SEED_ADDR,
       initiatorConfirmed: false, receiverConfirmed: false,
       createdAt: ago(rand(5,10)), updatedAt: escrowAt,
     }); idx += 2;
@@ -366,7 +400,6 @@ async function seedUserSwaps() {
         escrowInitiatedAt: ago(rand(30,45)), escrowReleasedAt: doneAt,
       } : {}),
       initiatorConfirmed: true, receiverConfirmed: true,
-      meetupLocation: pick(LOCATIONS), meetupScheduled: ago(rand(5,30)),
       ...(hasTopUp ? {
         topUpAmountKobo: rand(5,20)*1000, topUpPayerRole: pick(['initiator','receiver']),
         topUpPaid: true, topUpPaidAt: ago(rand(30,40)), topUpReleasedAt: doneAt,
@@ -411,12 +444,13 @@ async function seedUserSwaps() {
       ...escrowBase(iL, rL), escrowInitiatedAt: escrowAt,
       disputeReason: pick([
         'Item was not as described in the photos.',
-        'Other party did not show up for the meetup.',
+        'Item was delivered damaged — packaging was inadequate.',
         'Item had hidden damage not shown in photos.',
         'Received different item from what was agreed.',
       ]),
       disputeRaisedBy: asIni ? target._id : peer._id,
-      meetupLocation: pick(LOCATIONS), meetupScheduled: ago(rand(1,5)),
+      initiatorShipped: true, receiverShipped: true,
+      initiatorShipment: mockShip(), receiverShipment: mockShip(),
       createdAt: ago(rand(10,20)), updatedAt: ago(rand(1,5)),
     }); idx += 2;
   }
@@ -456,7 +490,7 @@ async function seedUserSwaps() {
   console.log('  proposed    — 4 where they proposed to ME (I need to accept/decline)');
   console.log('  accepted    — 2 where they paid escrow, I am LAST to pay mine');
   console.log('  accepted    — 2 where I need to pay the top-up gap');
-  console.log('  meetup_set  — 2 where they confirmed, I am LAST to confirm');
+  console.log('  shipped     — 2 where they confirmed receipt, I am LAST to confirm');
   console.log('  in_escrow   — 2 where they confirmed, I am LAST to confirm (releases escrow)');
   console.log('  in_escrow   — 1 where I still owe the top-up');
 

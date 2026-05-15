@@ -28,15 +28,23 @@ function future(days) {
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 
-const MEETUP_LOCATIONS = [
-  'Shoprite Lekki, Lagos', 'Computer Village, Ikeja, Lagos',
-  'Ikeja City Mall, Lagos', 'Balogun Market, Lagos Island',
-  'Surulere Bus Stop, Lagos', 'Banex Plaza, Wuse 2, Abuja',
-  'Wuse Market, Abuja', 'Garki Market, Abuja',
-  'Maitama Mall, Abuja', 'Area 11 Shoprite, Abuja',
-  'Kano City Mall, Kano', 'CBD Plaza, Kano',
-  'Sabon Gari Market, Kano', 'Fagge Market, Kano',
+const COURIERS = [
+  { provider: 'gig',      providerLabel: 'GIG Logistics' },
+  { provider: 'kwik',     providerLabel: 'Kwik Delivery' },
+  { provider: 'sendbox',  providerLabel: 'Sendbox' },
+  { provider: 'dhl',      providerLabel: 'DHL Nigeria' },
+  { provider: 'red_star', providerLabel: 'Red Star Express' },
 ];
+
+const SEED_ADDRESS = {
+  fullName: 'John Doe', phone: '+2348012345678',
+  addressLine1: '14 Adeola Odeku Street', city: 'Victoria Island', state: 'Lagos',
+};
+
+const mockShipment = () => {
+  const c = pick(COURIERS);
+  return { ...c, trackingNumber: `TRK${Math.floor(Math.random() * 9000000 + 1000000)}`, shippedAt: ago(rand(1, 3)) };
+};
 
 const NOTES = [
   'Looking forward to this swap!',
@@ -118,7 +126,7 @@ async function seedSwaps() {
   let li = 0; // rolling listing index
 
   // ── Status distribution across 50 swaps ──────────────────────────────────
-  // proposed: 10 | accepted: 10 | meetup_set: 6 | in_escrow: 8 | completed: 10 | cancelled: 4 | disputed: 2
+  // proposed: 10 | accepted: 10 | shipped: 6 | in_escrow: 8 | completed: 10 | cancelled: 4 | disputed: 2
 
   // PROPOSED (10)
   for (let i = 0; i < 10; i++) {
@@ -164,18 +172,26 @@ async function seedSwaps() {
     li += 2;
   }
 
-  // MEETUP SET (6)
+  // SHIPPED (6)
   for (let i = 0; i < 6; i++) {
     const [ini, iL, rec, rL] = PAIRS[i % PAIRS.length];
+    const escrowAt = ago(rand(5, 10));
     swaps.push({
       initiatorId: ini._id, receiverId: rec._id,
       initiatorListing: L(iL, li)._id,
       receiverListing:  L(rL, li + 1)._id,
       proposalNote: pick(NOTES),
       swapType: pick(SWAP_TYPES),
-      status: 'meetup_set',
-      meetupLocation: pick(MEETUP_LOCATIONS),
-      meetupScheduled: future(rand(1, 7)),
+      status: 'shipped',
+      escrowActive: true,
+      escrowDepositKobo: 100000,
+      initiatorDepositPaid: true,
+      receiverDepositPaid:  true,
+      escrowInitiatedAt: escrowAt,
+      initiatorAddressSet: true, receiverAddressSet: true,
+      initiatorAddress: SEED_ADDRESS, receiverAddress: SEED_ADDRESS,
+      initiatorShipped: true, receiverShipped: true,
+      initiatorShipment: mockShipment(), receiverShipment: mockShipment(),
       createdAt: ago(rand(5, 12)), updatedAt: ago(rand(0, 2)),
     });
     li += 2;
@@ -203,8 +219,8 @@ async function seedSwaps() {
       escrowInitiatedAt: escrowAt,
       initiatorConfirmed: iniConf,
       receiverConfirmed:  recConf,
-      meetupLocation: i % 2 === 0 ? pick(MEETUP_LOCATIONS) : undefined,
-      meetupScheduled: i % 2 === 0 ? future(rand(1, 5)) : undefined,
+      initiatorAddressSet: true, receiverAddressSet: true,
+      initiatorAddress: SEED_ADDRESS, receiverAddress: SEED_ADDRESS,
       ...(hasTopUp ? {
         topUpAmountKobo: rand(5, 30) * 1000,
         topUpPayerRole: pick(['initiator', 'receiver']),
@@ -239,8 +255,8 @@ async function seedSwaps() {
       } : {}),
       initiatorConfirmed: true,
       receiverConfirmed:  true,
-      meetupLocation: pick(MEETUP_LOCATIONS),
-      meetupScheduled: ago(rand(5, 25)),
+      initiatorConfirmed: true, receiverConfirmed: true,
+      initiatorShipped: true, receiverShipped: true,
       ...(hasTopUp ? {
         topUpAmountKobo: rand(5, 20) * 1000,
         topUpPayerRole: pick(['initiator', 'receiver']),
@@ -286,8 +302,8 @@ async function seedSwaps() {
       escrowInitiatedAt: escrowAt,
       disputeReason: pick(DISPUTE_REASONS),
       disputeRaisedBy: i % 2 === 0 ? ini._id : rec._id,
-      meetupLocation: pick(MEETUP_LOCATIONS),
-      meetupScheduled: ago(rand(1, 5)),
+      initiatorShipped: true, receiverShipped: true,
+      initiatorShipment: mockShipment(), receiverShipment: mockShipment(),
       createdAt: ago(rand(10, 20)), updatedAt: ago(rand(1, 5)),
     });
     li += 2;

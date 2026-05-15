@@ -1,25 +1,31 @@
 const { z } = require('zod');
 
+const optStr = () => z.preprocess(v => (v === '' ? undefined : v), z.string().optional());
+const optNum = () => z.preprocess(v => (v === '' || v == null ? undefined : Number(v)), z.number().min(0).optional());
+const optEnum = (vals) => z.preprocess(v => (v === '' ? undefined : v), z.enum(vals).optional());
+
 const createListingSchema = z.object({
   title: z.string().min(3).max(200),
   description: z.string().min(10),
-  categoryId: z.string().optional(),
+  categoryId: optStr(),
   listingType: z.enum(['goods', 'services', 'both']).default('goods'),
-  condition: z.enum(['new', 'like_new', 'good', 'fair', 'poor']).optional(),
-  estimatedValue: z.number().min(0).optional(),
-  wantsTitle: z.string().max(200).optional(),
-  wantsDescription: z.string().optional(),
-  wantsCategoryId: z.string().optional(),
-  wantsValueMin: z.number().min(0).optional(),
-  wantsValueMax: z.number().min(0).optional(),
-  minSwapValue: z.number().min(0).optional(),
-  locationState: z.string().optional(),
-  locationLga: z.string().optional(),
-  locationArea: z.string().optional(),
-  lat: z.number().optional(),
-  lng: z.number().optional(),
-  meetupOption: z.boolean().default(true),
-  deliveryOption: z.boolean().default(false),
+  condition: optEnum(['new', 'like_new', 'good', 'fair', 'poor']),
+  estimatedValue: optNum(),
+  wantsTitle: optStr(),
+  wantsDescription: optStr(),
+  wantsCategoryId: optStr(),
+  wantsValueMin: optNum(),
+  wantsValueMax: optNum(),
+  minSwapValue: optNum(),
+  locationState: optStr(),
+  locationLga: optStr(),
+  locationArea: optStr(),
+  packageWeight: optNum(),
+  packageLength: optNum(),
+  packageWidth:  optNum(),
+  packageHeight: optNum(),
+  fragile: z.boolean().optional(),
+  handlingInstructions: optStr(),
 });
 
 const updateListingSchema = createListingSchema.partial().extend({

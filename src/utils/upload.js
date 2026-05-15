@@ -35,8 +35,12 @@ const uploadToGridFS = (buffer, filename, mimetype) => {
   });
 };
 
-/** Build the public URL path for a stored file. */
-const fileUrl = (fileId) => `/api/files/${fileId}`;
+/** Build the absolute public URL for a stored file.
+ *  Set BACKEND_URL env var on Railway to your Railway domain.
+ *  Falls back to relative path so localhost still works via Vite proxy.
+ */
+const BACKEND_URL = process.env.BACKEND_URL || '';
+const fileUrl = (fileId) => `${BACKEND_URL}/api/files/${fileId}`;
 
 /** Multer middleware — single file */
 const uploadSingle = (fieldName) => upload.single(fieldName);

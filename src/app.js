@@ -29,6 +29,7 @@ const app = express();
 app.use(helmet());
 const ALLOWED_ORIGINS = [
   'https://swapnigeria.netlify.app',
+  'https://swapnaija-production.up.railway.app',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:5175',

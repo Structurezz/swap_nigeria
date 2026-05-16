@@ -96,6 +96,8 @@ app.get('/api/files/:id', (req, res) => {
     res.set('Content-Type', file.contentType || 'image/jpeg');
     res.set('Cache-Control', 'public, max-age=31536000, immutable');
     res.set('ETag', etag);
+    // Allow cross-origin <img> loads (Helmet defaults to same-origin which blocks Netlify→Railway)
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
   });
 
   stream.on('error', () => res.status(404).json({ error: 'File not found' }));

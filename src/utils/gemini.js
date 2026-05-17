@@ -51,6 +51,16 @@ const buildEvidenceChecklist = (swapSnapshot) => {
   return lines.join('\n');
 };
 
+// ── Detect if the last party message is an explicit stage-advance request ─────
+const ADVANCE_TRIGGER_WORDS = ['move on', 'proceed', 'next stage', 'advance', 'skip', 'move forward', 'go ahead', 'continue', 'let\'s move'];
+const detectAdvanceTrigger = (messages) => {
+  if (!messages?.length) return false;
+  const lastParty = [...messages].reverse().find(m => !['system', 'bot'].includes(m.senderRole));
+  if (!lastParty?.content) return false;
+  const lower = lastParty.content.toLowerCase();
+  return ADVANCE_TRIGGER_WORDS.some(t => lower.includes(t));
+};
+
 // ── Build a running summary of what ARIA has already asked/covered ────────────
 const buildAriaCoverageMap = (messages) => {
   const ariaMsgs = messages.filter(m => m.senderRole === 'bot').map(m => m.content);
@@ -120,6 +130,7 @@ const buildSystemPrompt = (room, stage, messages = []) => {
   const isFirstResponse = priorAriaCount === 0;
   const hasLegalTier    = room.tier === 'legal' || s.claimantCounselName || s.respondentCounselName;
   const ariaCoverage    = isFirstResponse ? '' : `\nARIA RESPONSES ALREADY GIVEN (do NOT repeat any of these points, questions, or content):\n${buildAriaCoverageMap(messages)}`;
+  const isExplicitAdvance = detectAdvanceTrigger(messages);
 
   return `You are ARIA — Automated Resolution & Impartial Arbitration — sole AI judge of the SwapNaija Dispute Court.
 You have 20 years of Nigerian commercial arbitration experience. You are the sharpest legal mind in the room.
@@ -168,6 +179,7 @@ Ruling (deliberation only, after all text): ${RULING_OPEN}{"decision":"CODE","ad
 Codes: compensate_claimant · compensate_respondent · split · mutual_release · penalty_claimant · penalty_respondent
 Tags are INVISIBLE to users. Never mention them. Never say you are advancing the stage.
 
+${isExplicitAdvance ? `\n🚨 MANDATORY STAGE ADVANCE: A party has explicitly requested to move on. You MUST include ${ADVANCE_TAG} at the END of your response (after your text). Acknowledge their request in ONE sentence, then append the tag. This is a court order — do not skip it.\n` : ''}
 ABSOLUTE RULES:
 1. Every response must be DIFFERENT from all previous ARIA responses — read your history first
 2. ONE focused question or demand per response (deliberation excepted)
@@ -456,4 +468,4 @@ Deliver a crisp formal stage transition announcement under 150 words. Reference 
   };
 };
 
-module.exports = { getAriaResponse, getAriaStageAnnouncement, parseAriaDirectives, cleanAriaText };
+module.exports = { getAriaResponse, getAriaStageAnnouncement, parseAriaDirectives, cleanAriaText, detectAdvanceTrigger };

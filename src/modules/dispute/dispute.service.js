@@ -4,7 +4,7 @@ const Swap           = require('../../models/Swap');
 const User           = require('../../models/User');
 const Payment        = require('../../models/Payment');
 const Listing        = require('../../models/Listing');
-const { getAriaResponse, getAriaStageAnnouncement } = require('../../utils/gemini');
+const { getAriaResponse, getAriaStageAnnouncement, detectAdvanceTrigger } = require('../../utils/gemini');
 const { getIo } = require('../../socket');
 
 const STAGE_ORDER = ['opening', 'evidence', 'deliberation', 'ruling', 'closed'];
@@ -470,14 +470,17 @@ const sendMessage = async (roomId, userId, content, messageType = 'text') => {
       emitToRoom(roomId, 'dispute:message', ariaMsg.toJSON());
 
       // ── ARIA autonomously advances stage ────────────────────────────────────
-      if (directives.advanceStage && !['deliberation', 'ruling', 'closed'].includes(freshRoom.stage)) {
-        const canAdvance = isStageComplete(freshRoom.stage, allMessages, freshRoom);
-        if (canAdvance) {
-          const nextStage = await _advanceStage(roomId, freshRoom.stage);
-          // If advancing to deliberation, schedule ARIA's deliberation + ruling
-          if (nextStage === 'deliberation') {
-            setTimeout(() => _triggerAriaDeliberation(roomId), 8000);
-          }
+      // Safety net: also advance if the user explicitly said "move on" etc. and
+      // the stage completion guard passes — don't rely solely on Gemini including the tag.
+      const userExplicitAdvance = detectAdvanceTrigger(allMessages);
+      const shouldAdvance = (directives.advanceStage || userExplicitAdvance)
+        && !['deliberation', 'ruling', 'closed'].includes(freshRoom.stage)
+        && isStageComplete(freshRoom.stage, allMessages, freshRoom);
+
+      if (shouldAdvance) {
+        const nextStage = await _advanceStage(roomId, freshRoom.stage);
+        if (nextStage === 'deliberation') {
+          setTimeout(() => _triggerAriaDeliberation(roomId), 8000);
         }
       }
 

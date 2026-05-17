@@ -283,18 +283,57 @@ const openRoom = async (swapId) => {
     User.findById(respondentId).select('fullName'),
   ]);
 
+  const claimantIsInitiator = claimantId.toString() === swap.initiatorId._id.toString();
+
   const swapSnapshot = {
+    // Parties
     claimantName:          claimant?.fullName   || 'Claimant',
     respondentName:        respondent?.fullName || 'Respondent',
+    claimantIsInitiator,
+
+    // Listings
     initiatorListingTitle: swap.initiatorListing?.title,
     receiverListingTitle:  swap.receiverListing?.title,
+
+    // Financials
     agreedValue:           swap.agreedValue,
     escrowDepositKobo:     swap.escrowDepositKobo,
     escrowActive:          swap.escrowActive,
-    topUpAmountKobo:       swap.topUpAmountKobo,
+    topUpAmountKobo:       swap.topUpAmountKobo || 0,
+    topUpPayerRole:        swap.topUpPayerRole,
+
+    // Dispute
     disputeReason:         swap.disputeReason,
     disputeRaisedAt:       swap.updatedAt,
     swapType:              swap.swapType,
+
+    // Full timeline — key for ARIA evidence screening
+    proposedAt:            swap.createdAt,
+    escrowActivatedAt:     swap.escrowInitiatedAt,
+
+    // Shipment facts
+    initiatorShipped:      swap.initiatorShipped,
+    receiverShipped:       swap.receiverShipped,
+    initiatorShipment:     swap.initiatorShipment
+      ? { providerLabel: swap.initiatorShipment.providerLabel, trackingNumber: swap.initiatorShipment.trackingNumber }
+      : null,
+    receiverShipment:      swap.receiverShipment
+      ? { providerLabel: swap.receiverShipment.providerLabel, trackingNumber: swap.receiverShipment.trackingNumber }
+      : null,
+
+    // Delivery addresses (city/state only for privacy)
+    initiatorAddressCity:  swap.initiatorAddress?.city,
+    initiatorAddressState: swap.initiatorAddress?.state,
+    receiverAddressCity:   swap.receiverAddress?.city,
+    receiverAddressState:  swap.receiverAddress?.state,
+
+    // Receipt confirmations
+    initiatorConfirmed:    swap.initiatorConfirmed,
+    receiverConfirmed:     swap.receiverConfirmed,
+
+    // Counsel slots — updated when lawyers are hired
+    claimantCounselName:   null,
+    respondentCounselName: null,
   };
 
   const room = await DisputeRoom.create({
@@ -387,8 +426,11 @@ const sendMessage = async (roomId, userId, content, messageType = 'text') => {
 
   let senderRole = 'admin';
   if (!sender.isAdmin) {
-    if (room.initiatorId.toString() === userId)      senderRole = 'initiator';
-    else if (room.receiverId.toString() === userId)  senderRole = 'receiver';
+    const uid = userId.toString();
+    if (uid === room.claimantCounselId?.toString())   senderRole = 'counsel_claimant';
+    else if (uid === room.respondentCounselId?.toString()) senderRole = 'counsel_respondent';
+    else if (room.initiatorId.toString() === uid)     senderRole = 'initiator';
+    else if (room.receiverId.toString() === uid)      senderRole = 'receiver';
     else throw Object.assign(new Error('Not a participant'), { status: 403 });
   }
 
@@ -611,4 +653,164 @@ const issueRuling = async (roomId, adminId, rulingData) => {
   return rulingRecord;
 };
 
-module.exports = { openRoom, getRoom, listRooms, sendMessage, advanceStage, issueRuling };
+// ── Find available legal practitioners ────────────────────────────────────────
+const findLawyers = async ({ specialization, maxFeeKobo, page = 1, limit = 20 } = {}) => {
+  const filter = { isLegalPractitioner: true };
+  if (specialization) filter.legalSpecialization = new RegExp(specialization, 'i');
+  if (maxFeeKobo)     filter.legalFeePerCaseKobo = { $lte: maxFeeKobo };
+
+  const skip = (page - 1) * limit;
+  const [lawyers, total] = await Promise.all([
+    User.find(filter)
+      .select('fullName avatarUrl locationState legalBio legalSpecialization legalBarNumber legalFeePerCaseKobo legalCasesTotal legalCasesWon ratingAvg ratingCount')
+      .sort({ legalCasesWon: -1, ratingAvg: -1 })
+      .skip(skip)
+      .limit(limit),
+    User.countDocuments(filter),
+  ]);
+
+  return {
+    lawyers: lawyers.map(l => l.toJSON()),
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+  };
+};
+
+// ── Party requests a lawyer to represent them ─────────────────────────────────
+const requestCounsel = async (roomId, requesterId, counselId, proposedFeeKobo) => {
+  const room    = await DisputeRoom.findById(roomId);
+  if (!room) throw Object.assign(new Error('Room not found'), { status: 404 });
+  if (room.status !== 'active') throw Object.assign(new Error('Room is closed'), { status: 400 });
+
+  const counsel = await User.findById(counselId).select('fullName isLegalPractitioner');
+  if (!counsel?.isLegalPractitioner) throw Object.assign(new Error('User is not a registered legal practitioner'), { status: 400 });
+
+  // Determine which side the requester is on
+  const claimantId   = room.claimantId.toString();
+  const respondentId = room.respondentId.toString();
+  let side;
+  if (requesterId === claimantId)   side = 'claimant';
+  else if (requesterId === respondentId) side = 'respondent';
+  else throw Object.assign(new Error('You are not a party to this dispute'), { status: 403 });
+
+  // Check no active counsel already
+  const existingAccepted = room.counselRequests.find(r => r.side === side && r.status === 'accepted');
+  if (existingAccepted) throw Object.assign(new Error(`You already have counsel on your side`), { status: 409 });
+
+  room.counselRequests.push({
+    requesterId,
+    counselId,
+    side,
+    status:        'pending',
+    agreedFeeKobo: proposedFeeKobo || 0,
+    requestedAt:   new Date(),
+  });
+  await room.save();
+
+  // Post system message
+  const sysMsg = await DisputeMessage.create({
+    roomId,
+    senderRole:  'system',
+    senderName:  'System',
+    content:     `⚖️ ${side === 'claimant' ? room.swapSnapshot.claimantName : room.swapSnapshot.respondentName} has requested legal counsel (${counsel.fullName}). Awaiting acceptance.`,
+    messageType: 'system',
+  });
+  emitToRoom(roomId, 'dispute:message', sysMsg.toJSON());
+  emitToRoom(roomId, 'dispute:counsel_requested', { side, counselName: counsel.fullName });
+
+  return room.toJSON();
+};
+
+// ── Lawyer accepts or declines a counsel request ──────────────────────────────
+const respondToCounselRequest = async (roomId, counselId, requestId, accept, agreedFeeKobo) => {
+  const room = await DisputeRoom.findById(roomId)
+    .populate('claimantId',  'fullName')
+    .populate('respondentId','fullName');
+  if (!room) throw Object.assign(new Error('Room not found'), { status: 404 });
+
+  const req = room.counselRequests.id(requestId);
+  if (!req) throw Object.assign(new Error('Request not found'), { status: 404 });
+  if (req.counselId.toString() !== counselId) throw Object.assign(new Error('Not your request'), { status: 403 });
+  if (req.status !== 'pending') throw Object.assign(new Error('Request already responded to'), { status: 409 });
+
+  const counsel = await User.findById(counselId).select('fullName walletBalance');
+
+  if (!accept) {
+    req.status      = 'declined';
+    req.respondedAt = new Date();
+    await room.save();
+
+    const sysMsg = await DisputeMessage.create({
+      roomId,
+      senderRole: 'system', senderName: 'System',
+      content:    `⚖️ ${counsel.fullName} has declined the counsel request.`,
+      messageType:'system',
+    });
+    emitToRoom(roomId, 'dispute:message', sysMsg.toJSON());
+    return room.toJSON();
+  }
+
+  // Accept — deduct fee from requester's wallet and credit counsel
+  const finalFee = agreedFeeKobo || req.agreedFeeKobo || 0;
+  if (finalFee > 0) {
+    const requester = await User.findByIdAndUpdate(
+      req.requesterId,
+      { $inc: { walletBalance: -finalFee } },
+      { new: true },
+    );
+    if (!requester || requester.walletBalance < 0) {
+      // Rollback
+      await User.findByIdAndUpdate(req.requesterId, { $inc: { walletBalance: finalFee } });
+      throw Object.assign(new Error('Insufficient Barter Credits to pay counsel fee'), { status: 400 });
+    }
+    await User.findByIdAndUpdate(counselId, { $inc: { walletBalance: finalFee } });
+    await Payment.insertMany([
+      { userId: req.requesterId, swapId: room.swapId, amountKobo: finalFee, paymentType: 'fee', status: 'success', meta: { type: 'counsel_fee', counselId, side: req.side } },
+      { userId: counselId, swapId: room.swapId, amountKobo: finalFee, paymentType: 'fee', status: 'success', meta: { type: 'counsel_fee_received', side: req.side } },
+    ]);
+  }
+
+  // Update request + room
+  req.status        = 'accepted';
+  req.agreedFeeKobo = finalFee;
+  req.respondedAt   = new Date();
+
+  const fieldPrefix = req.side === 'claimant' ? 'claimant' : 'respondent';
+  room[`${fieldPrefix}CounselId`]        = counselId;
+  room[`${fieldPrefix}CounselFeeKobo`]   = finalFee;
+  room.tier = 'legal';
+
+  // Update snapshot with counsel name
+  if (!room.swapSnapshot) room.swapSnapshot = {};
+  room.swapSnapshot[`${fieldPrefix}CounselName`] = counsel.fullName;
+  room.markModified('swapSnapshot');
+
+  await room.save();
+  await User.findByIdAndUpdate(counselId, { $inc: { legalCasesTotal: 1 } });
+
+  // Announce counsel entry to the court
+  const entryMsg = await DisputeMessage.create({
+    roomId,
+    senderId:    counselId,
+    senderRole:  `counsel_${req.side}`,
+    senderName:  counsel.fullName,
+    content:     `I am ${counsel.fullName}, entering appearance as Counsel for the ${req.side === 'claimant' ? 'Claimant' : 'Respondent'} in Case #${room.swapId.toString().slice(-8).toUpperCase()}. I have reviewed the case file and am prepared to proceed.`,
+    messageType: 'text',
+  });
+  emitToRoom(roomId, 'dispute:message', entryMsg.toJSON());
+  emitToRoom(roomId, 'dispute:counsel_joined', { side: req.side, counselName: counsel.fullName, tier: 'legal' });
+
+  return room.toJSON();
+};
+
+// ── Update legalCasesWon when a ruling is issued ──────────────────────────────
+// Call this after _executeAriaRuling or issueRuling when counsel was present
+const _creditCounselWin = async (room, winningSide) => {
+  const counselId = winningSide === 'claimant' ? room.claimantCounselId : room.respondentCounselId;
+  if (counselId) {
+    await User.findByIdAndUpdate(counselId, { $inc: { legalCasesWon: 1 } });
+  }
+};
+
+module.exports = { openRoom, getRoom, listRooms, sendMessage, advanceStage, issueRuling, findLawyers, requestCounsel, respondToCounselRequest };

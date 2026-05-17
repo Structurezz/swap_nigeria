@@ -31,6 +31,15 @@ const userSchema = new mongoose.Schema(
     ratingCount: { type: Number, default: 0 },
     isAdmin: { type: Boolean, default: false },
     walletBalance: { type: Number, default: 0 }, // stored in kobo
+
+    // ── Legal Practitioner Profile ─────────────────────────────────────────────
+    isLegalPractitioner:  { type: Boolean, default: false },
+    legalBio:             String,
+    legalSpecialization:  String, // e.g. 'Commercial', 'Property', 'Contract', 'Labour'
+    legalBarNumber:       String, // optional bar admission number
+    legalFeePerCaseKobo:  { type: Number, default: 0 },
+    legalCasesTotal:      { type: Number, default: 0 },
+    legalCasesWon:        { type: Number, default: 0 },
     referralCode: { type: String, unique: true, sparse: true, index: true },
     referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     referralCount: { type: Number, default: 0 },

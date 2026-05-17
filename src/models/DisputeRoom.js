@@ -14,6 +14,16 @@ const rulingSchema = new mongoose.Schema({
   ariaFormattedDecision:   String,
 }, { _id: false });
 
+const counselRequestSchema = new mongoose.Schema({
+  requesterId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  counselId:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  side:          { type: String, enum: ['claimant', 'respondent'], required: true },
+  status:        { type: String, enum: ['pending', 'accepted', 'declined'], default: 'pending' },
+  agreedFeeKobo: { type: Number, default: 0 },
+  requestedAt:   { type: Date, default: Date.now },
+  respondedAt:   Date,
+}, { _id: true });
+
 const disputeRoomSchema = new mongoose.Schema({
   swapId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Swap', required: true, unique: true },
   initiatorId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -22,6 +32,15 @@ const disputeRoomSchema = new mongoose.Schema({
   respondentId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   adminId:       { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   swapSnapshot:  { type: mongoose.Schema.Types.Mixed },
+
+  // ── Legal counsel ────────────────────────────────────────────────────────────
+  tier:                    { type: String, enum: ['standard', 'legal'], default: 'standard' },
+  claimantCounselId:       { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  respondentCounselId:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  claimantCounselFeeKobo:  { type: Number, default: 0 },
+  respondentCounselFeeKobo:{ type: Number, default: 0 },
+  counselRequests:         [counselRequestSchema],
+
   stage: {
     type: String,
     enum: ['opening', 'evidence', 'deliberation', 'ruling', 'closed'],

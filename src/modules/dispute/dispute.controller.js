@@ -45,6 +45,37 @@ const issueRulingController = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ── Legal counsel ──────────────────────────────────────────────────────────────
+const findLawyersController = async (req, res, next) => {
+  try {
+    const { specialization, maxFeeKobo, page = 1, limit = 20 } = req.query;
+    const data = await svc.findLawyers({ specialization, maxFeeKobo: maxFeeKobo ? +maxFeeKobo : undefined, page: +page, limit: +limit });
+    res.json({ data });
+  } catch (err) { next(err); }
+};
+
+const requestCounselController = async (req, res, next) => {
+  try {
+    const { counselId, proposedFeeKobo } = req.body;
+    const data = await svc.requestCounsel(req.params.roomId, req.user.id, counselId, proposedFeeKobo);
+    res.json({ data });
+  } catch (err) { next(err); }
+};
+
+const respondCounselController = async (req, res, next) => {
+  try {
+    const { accept, agreedFeeKobo } = req.body;
+    const data = await svc.respondToCounselRequest(
+      req.params.roomId,
+      req.user.id,
+      req.params.requestId,
+      Boolean(accept),
+      agreedFeeKobo,
+    );
+    res.json({ data });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   listRoomsController,
   getRoomController,
@@ -52,4 +83,7 @@ module.exports = {
   sendMessageController,
   advanceStageController,
   issueRulingController,
+  findLawyersController,
+  requestCounselController,
+  respondCounselController,
 };

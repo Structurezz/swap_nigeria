@@ -19,6 +19,7 @@ const initSocket = (httpServer) => {
     'http://localhost:5174',
     'http://localhost:5175',
     'http://localhost:5176',
+    'http://localhost:5180',
     ...(config.FRONTEND_URL ? [config.FRONTEND_URL] : []),
   ];
 
@@ -178,6 +179,16 @@ const initSocket = (httpServer) => {
         conversationId,
         userId: socket.userId,
       });
+    });
+
+    // Dispute room events
+    socket.on('dispute:join', (roomId) => {
+      socket.join(`dispute:${roomId}`);
+      console.log(`${socket.userId} joined dispute room: ${roomId}`);
+    });
+
+    socket.on('dispute:leave', (roomId) => {
+      socket.leave(`dispute:${roomId}`);
     });
 
     socket.on('disconnect', (reason) => {

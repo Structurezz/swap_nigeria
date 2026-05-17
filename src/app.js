@@ -16,6 +16,8 @@ require('./models/Message');
 require('./models/Review');
 require('./models/Payment');
 require('./models/OtpCode');
+require('./models/DisputeRoom');
+require('./models/DisputeMessage');
 
 let config;
 try {
@@ -66,6 +68,7 @@ app.use('/api/reviews', require('./modules/reviews/reviews.routes'));
 app.use('/api/payments',       require('./modules/payments/payments.routes'));
 app.use('/api/notifications',  require('./modules/notifications/notifications.routes'));
 app.use('/api/admin',          require('./modules/admin/admin.routes'));
+app.use('/api/dispute',        require('./modules/dispute/dispute.routes'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 

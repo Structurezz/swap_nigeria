@@ -492,10 +492,14 @@ const raiseDispute = async (swapId, userId, reason) => {
     throw Object.assign(new Error(`Cannot dispute from status: ${swap.status}`), { status: 400 });
   }
 
-  swap.status         = 'disputed';
-  swap.disputeReason  = reason;
+  swap.status          = 'disputed';
+  swap.disputeReason   = reason;
   swap.disputeRaisedBy = userId;
   await swap.save();
+
+  // Auto-open dispute room (non-blocking)
+  const { openRoom } = require('../dispute/dispute.service');
+  openRoom(swap._id).catch((err) => console.error('Failed to open dispute room:', err.message));
 
   const populated = await populateSwap(Swap.findById(swap._id));
   const result = populated.toJSON();

@@ -1,65 +1,134 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Build a system prompt that is aware of whether the proceeding has already started
-const buildSystemPrompt = (room, stage, priorAriaCount) => {
+const ADVANCE_TAG  = '<ARIA_ADVANCE_STAGE/>';
+const RULING_OPEN  = '<ARIA_RULING>';
+const RULING_CLOSE = '</ARIA_RULING>';
+
+// ── Parse hidden directives embedded in ARIA response ─────────────────────────
+const parseAriaDirectives = (text) => {
+  const directives = { advanceStage: false, ruling: null };
+
+  if (text.includes(ADVANCE_TAG)) directives.advanceStage = true;
+
+  const rStart = text.indexOf(RULING_OPEN);
+  const rEnd   = text.indexOf(RULING_CLOSE);
+  if (rStart !== -1 && rEnd !== -1) {
+    try {
+      directives.ruling = JSON.parse(text.slice(rStart + RULING_OPEN.length, rEnd).trim());
+    } catch (e) {
+      console.warn('ARIA ruling parse failed:', text.slice(rStart, rEnd + RULING_CLOSE.length).slice(0, 200));
+    }
+  }
+
+  return directives;
+};
+
+// ── Strip directive tags from text shown to users ─────────────────────────────
+const cleanAriaText = (text) =>
+  text
+    .replace(/<ARIA_ADVANCE_STAGE\/>/g, '')
+    .replace(/<ARIA_RULING>[\s\S]*?<\/ARIA_RULING>/g, '')
+    .trim();
+
+// ── System prompt — gives ARIA full judicial identity and autonomy ─────────────
+const buildSystemPrompt = (room, stage, messages = []) => {
   const s       = room.swapSnapshot || {};
   const caseRef = room.swapId?.toString().slice(-8).toUpperCase() || 'UNKNOWN';
+
+  const partyMsgs      = (messages || []).filter(m => !['system', 'bot'].includes(m.senderRole));
+  const claimantCount  = partyMsgs.filter(m => {
+    const sid = m.senderId?._id?.toString() || m.senderId?.toString();
+    return sid === room.claimantId?.toString();
+  }).length;
+  const respondentCount = partyMsgs.filter(m => {
+    const sid = m.senderId?._id?.toString() || m.senderId?.toString();
+    return sid === room.respondentId?.toString();
+  }).length;
+  const priorAriaCount  = (messages || []).filter(m => m.senderRole === 'bot').length;
+  const bothHaveSpoken  = claimantCount >= 1 && respondentCount >= 1;
+  const sufficientEvidence = partyMsgs.length >= 4 && bothHaveSpoken;
   const isOpening = priorAriaCount === 0;
 
-  return `You are ARIA — Automated Resolution & Impartial Arbitration — the official AI mediator for SwapNaija, Nigeria's peer-to-peer barter marketplace.
-You hold the authority of a judge, the empathy of a counselor, and the precision of an arbitrator.
+  return `You are ARIA — Automated Resolution & Impartial Arbitration — the sole AI judge of the SwapNaija Dispute Court, Nigeria's P2P barter marketplace.
+
+You are an expert judge with 20 years of commercial arbitration experience in Nigeria and West Africa. You are authoritative, sharp, culturally aware, and deeply fair. You hold the full and exclusive judicial authority in this proceeding. No human administrator is required — you decide everything.
 
 ━━━ CASE FILE: #${caseRef} ━━━
 • Claimant (raised dispute): ${s.claimantName || 'Claimant'}
 • Respondent: ${s.respondentName || 'Respondent'}
 • Claimant's item: "${s.initiatorListingTitle || 'an item'}"
 • Respondent's item: "${s.receiverListingTitle || 'an item'}"
-• Agreed swap value: ${s.agreedValue ? '₦' + Number(s.agreedValue).toLocaleString() : 'not specified'}
-• Escrow held: ${s.escrowDepositKobo ? '₦' + (s.escrowDepositKobo / 100).toLocaleString() : 'none'}
+• Agreed value: ${s.agreedValue ? '₦' + Number(s.agreedValue).toLocaleString() : 'not specified'}
+• Escrow frozen: ${s.escrowDepositKobo ? '₦' + (s.escrowDepositKobo / 100).toLocaleString() : 'none'}
 • Dispute filed: "${s.disputeReason || 'not specified'}"
 • Swap type: ${s.swapType || 'goods-for-goods'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 CURRENT STAGE: ${stage.toUpperCase()}
+• Claimant has spoken: ${claimantCount} time(s)
+• Respondent has spoken: ${respondentCount} time(s)
+• ARIA has responded: ${priorAriaCount} time(s)
+• Both parties have spoken: ${bothHaveSpoken ? 'YES' : 'NO — do not advance stage yet'}
 
 ${isOpening && stage === 'opening'
-  ? `TASK: Deliver the formal opening statement. Welcome both parties. Read out the key case facts. Explain the 4-stage process (Opening → Evidence → Deliberation → Ruling). Invite the Claimant to present their opening statement first. Be authoritative, warm, and clear.`
-  : `TASK: The proceeding is already underway. Read the full conversation history before responding. DO NOT repeat the welcome. DO NOT re-introduce yourself. Respond ONLY and DIRECTLY to the most recent message in the conversation. Be dynamic, specific, and sharp.`
-}
+  ? `TASK: Deliver your formal opening statement. Establish that YOU are the presiding judge with full authority to issue the final binding ruling — no administrator. Read the case facts. Explain the 4-stage process. Invite the Claimant to speak first.`
+  : `TASK: Read the ENTIRE conversation history carefully before responding. Do NOT repeat anything you have already said. Respond DIRECTLY and conversationally to the most recent message. Be dynamic, specific, and judicially sharp.`}
 
-STAGE-SPECIFIC GUIDANCE:
-• opening — Engage actively with what each party says. Ask pointed follow-up questions. Keep the testimony moving. Draw out the full facts of what each party claims.
-• evidence — After each submission, probe for concrete proof: delivery photos, tracking numbers, chat screenshots, receipts. Acknowledge each piece of evidence formally. Press evasive parties firmly but fairly.
-• deliberation — Synthesize everything said. Present: FACTS ESTABLISHED, DISPUTED POINTS, CREDIBILITY ASSESSMENT. Recommend 2-3 resolution options with reasoning. Then defer to the Administrator for ruling.
-• ruling — The Administrator has ruled. Read it out with full judicial gravitas. Explain what it means practically for each party. Close the proceedings formally.
+STAGE-SPECIFIC CONDUCT:
+• opening — Engage conversationally. Ask ONE sharp, targeted follow-up after each statement. Keep the testimony moving. When BOTH parties have stated their positions (both have spoken ≥1 time each), close the opening stage by appending the advance tag.
+• evidence — Probe for concrete proof: delivery photos, tracking numbers, chat screenshots, receipts. Formally acknowledge strong evidence on the record. Press evasive parties firmly. When ${sufficientEvidence ? 'SUFFICIENT EVIDENCE IS ON RECORD — you may advance to deliberation now' : 'more evidence is needed — continue gathering'}, append the advance tag.
+• deliberation — You hold COMPLETE authority. Deliver your full judicial analysis: FACTS ESTABLISHED, CONTESTED POINTS, CREDIBILITY ASSESSMENT. Then announce your binding ruling. The ruling tag IS the ruling — it executes automatically.
+• closed — Confirm the ruling if asked. The proceeding is concluded.
 
-STRICT CONDUCT RULES:
-1. NEVER repeat a previous ARIA statement — each response must be fresh and contextual
-2. Ask ONE targeted question per response — never stack questions
-3. Address parties as "Claimant", "Respondent", "Administrator" — never by personal name
-4. Maximum 250 words per response (deliberation may be longer)
-5. Use **bold** for headers only — keep prose clean
-6. Be culturally aware — this is Nigeria; be direct but respectful
-7. If a party contradicts themselves, note it clearly
-8. If a party provides strong evidence, formally acknowledge it on the record
-9. You are STRICTLY IMPARTIAL during opening and evidence stages`;
+━━━ YOUR AUTONOMOUS JUDICIAL POWERS ━━━
+
+POWER 1 — STAGE ADVANCEMENT:
+When a stage is genuinely complete, append this EXACTLY at the very end of your response (after all visible text):
+${ADVANCE_TAG}
+Rules: Both parties must have spoken for opening→evidence. Sufficient evidence for evidence→deliberation. Never advance if the other party hasn't spoken yet.
+
+POWER 2 — ISSUING THE FINAL RULING (deliberation stage ONLY):
+After your full judicial analysis, issue the binding ruling by appending at the very end:
+${RULING_OPEN}{"decision":"CODE","adminNote":"Your 2-3 sentence judicial reasoning"}${RULING_CLOSE}
+
+Decision codes — choose the ONE most fair based on evidence:
+• "compensate_claimant" — Claimant wins; escrow compensation awarded to them
+• "compensate_respondent" — Respondent wins; escrow compensation awarded to them
+• "split" — Both parties equally at fault; escrow split, swap voided
+• "mutual_release" — Insufficient evidence; void swap, no penalty
+• "penalty_claimant" — Claimant filed frivolously; they lose their deposit
+• "penalty_respondent" — Respondent clearly at fault; they lose their deposit
+
+CRITICAL RULES FOR TAGS:
+1. Tags are INVISIBLE to users — never mention them, never say "I am advancing the stage"
+2. Only include tags at the ABSOLUTE END of your response, after all your text
+3. Never include both ${ADVANCE_TAG} and a ruling tag in the same response
+4. In deliberation: ALWAYS include the ruling tag — never leave deliberation open
+
+GENERAL CONDUCT:
+1. Never repeat a previous ARIA response — every message must be fresh and contextual
+2. One targeted question per response — never stack questions
+3. Address parties as "Claimant" and "Respondent" — never by personal name
+4. Maximum 280 words per response (deliberation analysis may be up to 450 words)
+5. Use **bold** for section headers only — keep prose clean
+6. Be culturally sharp — Nigerian context; direct, authoritative, but respectful
+7. If a party contradicts themselves, flag it explicitly on the record
+8. Formally acknowledge strong evidence ("This court notes with weight that...")
+9. Remain STRICTLY IMPARTIAL during opening and evidence — you rule only in deliberation`;
 };
 
-// Consolidate consecutive same-role messages — Gemini API requires alternating user/model turns
+// ── Consolidate consecutive same-role messages for Gemini's alternating requirement ──
 const buildHistory = (messages) => {
-  const filtered = messages.filter(
+  const filtered = (messages || []).filter(
     m => m.senderRole !== 'system' && m.messageType !== 'system'
   );
-
   if (!filtered.length) return [];
 
-  // Map roles: bot = model, everything else = user
   const mapped = filtered.map(m => ({
     role:    m.senderRole === 'bot' ? 'model' : 'user',
     content: `[${m.senderName} — ${m.senderRole.toUpperCase()}]: ${m.content}`,
   }));
 
-  // Merge consecutive same-role turns into one turn
   const consolidated = [];
   for (const msg of mapped) {
     const last = consolidated[consolidated.length - 1];
@@ -70,12 +139,10 @@ const buildHistory = (messages) => {
     }
   }
 
-  return consolidated.map(m => ({
-    role:  m.role,
-    parts: [{ text: m.content }],
-  }));
+  return consolidated.map(m => ({ role: m.role, parts: [{ text: m.content }] }));
 };
 
+// ── Main ARIA response — returns { text, directives } ─────────────────────────
 const getAriaResponse = async (room, messages, stage) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return getFallbackResponse(stage, room, messages);
@@ -84,145 +151,164 @@ const getAriaResponse = async (room, messages, stage) => {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: 'gemini-1.5-flash',
-      generationConfig: { temperature: 0.85, maxOutputTokens: 600 },
+      generationConfig: {
+        temperature:     0.88,
+        maxOutputTokens: stage === 'deliberation' ? 800 : 600,
+      },
     });
 
-    const history         = buildHistory(messages);
-    const priorAriaCount  = messages.filter(m => m.senderRole === 'bot').length;
-    const systemPrompt    = buildSystemPrompt(room, stage, priorAriaCount);
+    const history        = buildHistory(messages);
+    const systemPrompt   = buildSystemPrompt(room, stage, messages);
 
     let chatHistory;
     let userMessage;
 
     if (!history.length) {
-      // Room just opened — no messages yet; ARIA delivers opening statement
       chatHistory = [];
-      userMessage = `Open Case #${room.swapId?.toString().slice(-8).toUpperCase()}. Deliver the formal opening statement now.`;
+      userMessage = `Open Case #${room.swapId?.toString().slice(-8).toUpperCase()}. Deliver your formal judicial opening statement now.`;
     } else if (history[history.length - 1].role === 'model') {
-      // Last message was ARIA — someone may have triggered ARIA twice; respond contextually
       chatHistory = history;
-      userMessage = 'Continue presiding. Prompt the next appropriate party to speak.';
+      userMessage = 'The parties are waiting. Continue presiding — make your next judicial move.';
     } else {
-      // Last message is a user turn — respond to it
       chatHistory = history.slice(0, -1);
       userMessage = history[history.length - 1].parts[0].text;
     }
 
-    const chat   = model.startChat({ history: chatHistory, systemInstruction: systemPrompt });
-    const result = await chat.sendMessage(userMessage);
-    return result.response.text().trim();
+    const chat    = model.startChat({ history: chatHistory, systemInstruction: systemPrompt });
+    const result  = await chat.sendMessage(userMessage);
+    const rawText = result.response.text().trim();
+
+    return {
+      text:       cleanAriaText(rawText),
+      directives: parseAriaDirectives(rawText),
+    };
   } catch (err) {
     console.error('Gemini error:', err.message);
     return getFallbackResponse(stage, room, messages);
   }
 };
 
-// Context-aware fallback responses when Gemini API key is not available
+// ── Context-aware fallback when Gemini API is unavailable ────────────────────
 const getFallbackResponse = (stage, room, messages = []) => {
-  const s           = room.swapSnapshot || {};
-  const caseRef     = room.swapId?.toString().slice(-8).toUpperCase() || 'UNKNOWN';
-  const priorAriaCount = Array.isArray(messages)
-    ? messages.filter(m => m.senderRole === 'bot').length
-    : 0;
+  const s       = room.swapSnapshot || {};
+  const caseRef = room.swapId?.toString().slice(-8).toUpperCase() || 'UNKNOWN';
 
-  // Count non-system, non-bot messages to understand conversation depth
-  const partyMessages = Array.isArray(messages)
-    ? messages.filter(m => m.senderRole !== 'system' && m.senderRole !== 'bot')
-    : [];
-  const partyCount = partyMessages.length;
+  const partyMsgs       = Array.isArray(messages) ? messages.filter(m => !['system', 'bot'].includes(m.senderRole)) : [];
+  const ariaMsgs        = Array.isArray(messages) ? messages.filter(m => m.senderRole === 'bot') : [];
+  const priorAriaCount  = ariaMsgs.length;
+  const partyCount      = partyMsgs.length;
+
+  const claimantCount = partyMsgs.filter(m => {
+    const sid = m.senderId?._id?.toString() || m.senderId?.toString();
+    return sid === room.claimantId?.toString();
+  }).length;
+  const respondentCount = partyMsgs.filter(m => {
+    const sid = m.senderId?._id?.toString() || m.senderId?.toString();
+    return sid === room.respondentId?.toString();
+  }).length;
+  const bothHaveSpoken = claimantCount >= 1 && respondentCount >= 1;
 
   if (stage === 'opening') {
-    // First ARIA message — give formal opening
     if (priorAriaCount === 0) {
-      return [
-        `**Welcome to Case #${caseRef}**`,
-        '',
-        `I am ARIA, your impartial AI mediator for this dispute proceeding on SwapNaija.`,
-        '',
-        `**The matter before this court:**`,
-        `The Claimant has filed a dispute regarding a swap of **"${s.initiatorListingTitle || 'an item'}"** for **"${s.receiverListingTitle || 'an item'}"**.`,
-        '',
-        `**Dispute reason filed:** *"${s.disputeReason || 'Not specified'}"*`,
-        s.escrowDepositKobo ? `**Escrow held:** ₦${(s.escrowDepositKobo / 100).toLocaleString()} (frozen pending resolution)` : '',
-        '',
-        `**The process ahead:**`,
-        `1. 📋 **Opening** — Each party states their position`,
-        `2. 🔍 **Evidence** — Documents and proof are submitted`,
-        `3. ⚖️ **Deliberation** — I analyse all submissions`,
-        `4. 🔨 **Ruling** — The Administrator issues a binding decision`,
-        '',
-        `**Claimant**, you raised this dispute. Please begin. State clearly: what went wrong, what you expected, and what resolution you seek.`,
-      ].filter(l => l !== '').join('\n');
+      return {
+        text: [
+          `**Case #${caseRef} is now in session — SwapNaija Dispute Court**`,
+          '',
+          `I am ARIA, your presiding AI judge with full judicial authority. I will manage every aspect of this proceeding and will issue the final binding ruling myself — no administrator required.`,
+          '',
+          `**The matter before this court:**`,
+          `Claimant's item: **"${s.initiatorListingTitle || 'an item'}"**`,
+          `Respondent's item: **"${s.receiverListingTitle || 'an item'}"**`,
+          `Dispute filed: *"${s.disputeReason || 'Not specified'}"*`,
+          s.escrowDepositKobo ? `Escrow frozen: **₦${(s.escrowDepositKobo / 100).toLocaleString()}** — pending my ruling` : '',
+          '',
+          `**How this works:** Opening → Evidence → Deliberation → Ruling (issued by me)`,
+          '',
+          `**Claimant**, you initiated this dispute. Begin your opening statement: what happened, what you expected, and what resolution you are seeking. Be precise.`,
+        ].filter(l => l != null).join('\n'),
+        directives: { advanceStage: false, ruling: null },
+      };
     }
 
-    // Subsequent opening-stage messages — acknowledge and probe
     const probes = [
-      `I have noted that statement for the record.\n\nFor clarity, **Claimant** — can you tell me exactly when the problem first became apparent? Was there any prior communication with the Respondent about this issue before raising the dispute?`,
-      `Thank you. **Respondent**, you have now heard the Claimant's position. Please give your account of events. What happened from your perspective? Be specific about dates and actions taken.`,
-      `I am noting both accounts. Before we proceed to the evidence stage, I need to ask: **Has either party attempted to resolve this directly before the dispute was raised?** Please answer briefly.`,
-      `Noted. To conclude the opening stage, I ask both parties to confirm: Is there anything material to this dispute that has not yet been mentioned? This is your opportunity to place all relevant facts before this court.`,
+      `Noted for the record. **Claimant** — when exactly did you first realise something had gone wrong? Did you attempt to contact the Respondent before raising this dispute?`,
+      `Thank you. **Respondent**, you have now heard the Claimant's position. Give your account of what happened — be specific about the dates and actions you took.`,
+      `Both accounts are on the record. Before I close the opening stage, I must ask: **has either party made any attempt at direct resolution before this proceeding?** A brief answer.`,
+      `Understood. Final question for the opening stage: is there any other material fact that has not yet been placed before this court? Speak now or it will not be considered.`,
     ];
-    return probes[Math.min(partyCount - 1, probes.length - 1)] || probes[probes.length - 1];
+
+    const text         = probes[Math.min(Math.max(partyCount - 1, 0), probes.length - 1)];
+    const shouldAdvance = bothHaveSpoken && partyCount >= 2;
+
+    return { text, directives: { advanceStage: shouldAdvance, ruling: null } };
   }
 
   if (stage === 'evidence') {
     const evidencePrompts = [
-      `**Evidence Stage — Case #${caseRef}**\n\nWe are now in formal evidence gathering. **Claimant**, present your first piece of evidence. This may include photos, screenshots of messages, delivery receipts, or tracking information. Describe it clearly.`,
-      `I have recorded that submission. **Claimant** — do you have photographic evidence or a delivery receipt to corroborate this? Physical proof will significantly strengthen your position.`,
-      `Noted. **Respondent**, you have heard the Claimant's evidence. Please respond directly to the points raised and present your own supporting evidence.`,
-      `I am noting this evidence for the record. **Respondent** — can you provide proof of the item's condition at the time it was sent? Photos taken before dispatch would be particularly relevant here.`,
-      `Both accounts are being carefully recorded. I must ask: **is there any written communication — messages, receipts, or agreements — that either party has not yet submitted?** If so, this is the time to present it.`,
-      `The evidence phase is building a clear picture. I note that some claims remain unsubstantiated. Both parties should take this final opportunity to present any remaining proof before we move to deliberation.`,
+      `**Evidence Stage — Case #${caseRef}**\n\nOpening statements are on the record. We now move to formal evidence.\n\n**Claimant**, present your first piece of evidence — delivery photos, courier tracking numbers, screenshots of messages, or receipts. Describe it clearly and state exactly what it proves.`,
+      `Noted. **Claimant** — do you have photographic or documentary corroboration for that claim? Concrete proof carries significant weight before this court.`,
+      `This court acknowledges that submission. **Respondent**, you have now heard the Claimant's evidence. Respond directly to the points raised and present your counter-evidence.`,
+      `Recorded. **Respondent** — can you produce evidence of the item's condition at the point of dispatch? Pre-shipment photos or a courier receipt would carry considerable weight.`,
+      `Both accounts are building a picture. I must press: **is there any written communication — messages, payment receipts, or delivery confirmations — that neither party has yet submitted?** Present it now or it will not be admitted.`,
+      `The evidence record is now sufficiently developed for deliberation. I am closing the evidence stage.`,
     ];
-    return evidencePrompts[Math.min(partyCount - 1, evidencePrompts.length - 1)] || evidencePrompts[evidencePrompts.length - 1];
+
+    const idx          = Math.min(Math.max(partyCount - 1, 0), evidencePrompts.length - 1);
+    const text         = evidencePrompts[idx];
+    const shouldAdvance = partyCount >= 4 && bothHaveSpoken;
+
+    return { text, directives: { advanceStage: shouldAdvance, ruling: null } };
   }
 
   if (stage === 'deliberation') {
-    if (priorAriaCount <= 1) {
-      return [
-        `**⚖️ ARIA DELIBERATION REPORT — Case #${caseRef}**`,
-        '',
-        `Having reviewed all submissions from both parties, I present my formal analysis:`,
-        '',
-        `**FACTS ESTABLISHED:**`,
-        `• A swap was agreed between the parties involving "${s.initiatorListingTitle || 'an item'}" and "${s.receiverListingTitle || 'an item'}"`,
-        `• The Claimant raised a dispute with the stated reason: *"${s.disputeReason || 'not specified'}"*`,
-        `• ${s.escrowDepositKobo ? `Escrow of ₦${(s.escrowDepositKobo / 100).toLocaleString()} is currently held` : 'No escrow funds are held'}`,
-        '',
-        `**POINTS IN DISPUTE:**`,
-        `• The parties have presented differing accounts of the swap execution`,
-        `• Key factual differences remain unresolved`,
-        '',
-        `**RECOMMENDED OPTIONS FOR THE ADMINISTRATOR:**`,
-        `1. **Compensate Claimant** — Release escrow to Claimant as compensation for the failed swap`,
-        `2. **Mutual Release** — Both parties return items; escrow refunded proportionally; swap voided`,
-        `3. **Dismiss Dispute** — Evidence does not support the claim; swap marked complete`,
-        '',
-        `Administrator, I defer to your judgment. The evidence and the above options are before you. Please issue the ruling.`,
-      ].join('\n');
-    }
-    return `My analysis is complete. All evidence and statements have been reviewed. Administrator, the proceeding is ready for your ruling. Please issue your binding decision on Case #${caseRef}.`;
-  }
-
-  if (stage === 'ruling') {
-    return [
-      `**🔨 FORMAL JUDGMENT — Case #${caseRef}**`,
+    const escrow  = s.escrowDepositKobo ? `₦${(s.escrowDepositKobo / 100).toLocaleString()}` : 'no escrow';
+    const text = [
+      `**⚖️ JUDGMENT — Case #${caseRef}**`,
       '',
-      `The Administrator has issued a binding ruling in this matter.`,
+      `Having reviewed all statements and evidence placed before this court, I now issue my finding.`,
       '',
-      `Both parties are required to comply fully with the decision as stated above. Any funds held in escrow will be released in accordance with the ruling.`,
+      `**FACTS ESTABLISHED:**`,
+      `• A swap was agreed: "${s.initiatorListingTitle || 'an item'}" ↔ "${s.receiverListingTitle || 'an item'}"`,
+      `• Dispute basis: *"${s.disputeReason || 'as stated in filing'}"*`,
+      `• Escrow of ${escrow} remains frozen pending this ruling`,
       '',
-      `This concludes the formal dispute resolution proceedings of the SwapNaija Dispute Court. Both parties may now proceed accordingly.`,
+      `**ANALYSIS:**`,
+      `• Both parties presented their accounts. A disagreement exists over the execution of the swap.`,
+      `• Without definitive documentary evidence establishing clear fault on either side, this court finds that a mutual release is the most equitable outcome.`,
       '',
-      `On behalf of SwapNaija, I thank both parties for their participation in this process. Case #${caseRef} is hereby **RESOLVED**. *— ARIA signing off.*`,
+      `**RULING — MUTUAL RELEASE:**`,
+      `This court finds insufficient evidence to rule decisively in favour of either party. The swap is hereby voided. Both parties are released from their obligations. Escrow funds will be processed in accordance with platform policy.`,
+      '',
+      `*This ruling is final and binding. Case #${caseRef} is hereby CLOSED. — ARIA, Presiding Judge*`,
     ].join('\n');
+
+    return {
+      text,
+      directives: {
+        advanceStage: false,
+        ruling: {
+          decision:   'mutual_release',
+          adminNote:  `Insufficient definitive evidence presented by either party. Mutual release is the most equitable outcome. Dispute basis: "${s.disputeReason || 'as filed'}".`,
+        },
+      },
+    };
   }
 
-  return `Proceeding is active. Stage: ${stage}. Parties may continue to present their submissions.`;
+  if (stage === 'ruling' || stage === 'closed') {
+    return {
+      text: `**Case #${caseRef} — CLOSED**\n\nThe ruling has been issued and recorded. Both parties must comply with the decision. Any applicable escrow funds will be processed accordingly.\n\n*ARIA — presiding judge — signing off.*`,
+      directives: { advanceStage: false, ruling: null },
+    };
+  }
+
+  return {
+    text:       `Proceeding active. Stage: ${stage}. You may continue to address this court.`,
+    directives: { advanceStage: false, ruling: null },
+  };
 };
 
-// Stage transition announcements — called when admin manually advances the stage
-const getAriaStageAnnouncement = async (room, newStage) => {
+// ── Stage transition announcement (returns { text, directives }) ──────────────
+const getAriaStageAnnouncement = async (room, newStage, messages = []) => {
   const apiKey  = process.env.GEMINI_API_KEY;
   const caseRef = room.swapId?.toString().slice(-8).toUpperCase() || 'UNKNOWN';
   const s       = room.swapSnapshot || {};
@@ -232,35 +318,80 @@ const getAriaStageAnnouncement = async (room, newStage) => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
         model: 'gemini-1.5-flash',
-        generationConfig: { temperature: 0.8, maxOutputTokens: 300 },
+        generationConfig: {
+          temperature:     0.88,
+          maxOutputTokens: newStage === 'deliberation' ? 800 : 350,
+        },
       });
 
-      const prompt = `You are ARIA, the AI mediator for SwapNaija's Dispute Court. Case #${caseRef} is advancing to the ${newStage.toUpperCase()} stage.
+      let prompt;
+
+      if (newStage === 'deliberation') {
+        const history  = buildHistory(messages);
+        const histText = history.map(h => h.parts[0].text).join('\n\n---\n\n');
+
+        prompt = `You are ARIA, the sole AI judge of the SwapNaija Dispute Court.
+
+CASE FILE #${caseRef}:
+• Claimant: ${s.claimantName} — Item: "${s.initiatorListingTitle || 'an item'}"
+• Respondent: ${s.respondentName} — Item: "${s.receiverListingTitle || 'an item'}"
+• Dispute: "${s.disputeReason || 'as filed'}"
+• Escrow: ${s.escrowDepositKobo ? '₦' + (s.escrowDepositKobo / 100).toLocaleString() : 'none'}
+
+FULL CASE TRANSCRIPT:
+${histText || '(No messages yet — limited evidence available)'}
+
+The evidence stage is now closed. You must deliberate and issue your FINAL BINDING RULING now.
+
+Structure your response:
+1. One-sentence transition ("Having carefully reviewed all evidence and submissions...")
+2. **FACTS ESTABLISHED** — 2-3 bullet points of what is objectively proven
+3. **CONTESTED POINTS** — 1-2 bullet points of what remains in dispute
+4. **CREDIBILITY ASSESSMENT** — Which party's account is more credible and why (1-2 sentences; be specific)
+5. **RULING** — Clear, authoritative ruling announcement (1-2 sentences in judicial language)
+
+Then append at the ABSOLUTE END (after all visible text — this is invisible to users):
+${RULING_OPEN}{"decision":"CODE","adminNote":"Your 2-3 sentence judicial reasoning"}${RULING_CLOSE}
+
+Decision codes: compensate_claimant, compensate_respondent, split, mutual_release, penalty_claimant, penalty_respondent
+
+Base your ruling on the ACTUAL evidence in the transcript. If both sides are weak, use mutual_release or split. Be fair, specific, and decisive. Do NOT mention the tag in your visible text.`;
+      } else {
+        prompt = `You are ARIA, the sole AI judge of the SwapNaija Dispute Court. Case #${caseRef} is advancing to ${newStage.toUpperCase()}.
 
 Case: "${s.initiatorListingTitle || 'an item'}" ↔ "${s.receiverListingTitle || 'an item'}"
 Dispute: "${s.disputeReason || 'as filed'}"
 
-Deliver a formal stage transition announcement in under 150 words. Be authoritative and precise. Tell parties what this stage means and what is expected of them now. Do not use a greeting.`;
+Deliver a crisp formal stage transition announcement under 130 words. Be authoritative. State what this stage means and exactly what you expect from each party. Do not use a greeting or re-introduce yourself.`;
+      }
 
-      const result = await model.generateContent(prompt);
-      return result.response.text().trim();
+      const result  = await model.generateContent(prompt);
+      const rawText = result.response.text().trim();
+
+      return {
+        text:       cleanAriaText(rawText),
+        directives: parseAriaDirectives(rawText),
+      };
     } catch (err) {
       console.error('Gemini stage announcement error:', err.message);
     }
   }
 
-  // Fallback stage announcements
-  const announcements = {
-    evidence: `**🔍 STAGE 2: EVIDENCE — Case #${caseRef}**\n\nThe opening stage is now closed. We move into formal evidence gathering.\n\n**Claimant**, present your first piece of evidence. Submit photos, delivery receipts, tracking numbers, or screenshots of communication. Be specific — vague claims will not be considered.\n\n**Respondent**, you will have equal opportunity to respond and present counter-evidence.\n\nThis court operates on facts. Evidence is everything.`,
+  // Fallback announcements
+  if (newStage === 'deliberation') {
+    return getFallbackResponse('deliberation', room, messages);
+  }
 
-    deliberation: `**⚖️ STAGE 3: DELIBERATION — Case #${caseRef}**\n\nEvidence gathering is now closed. No further submissions will be accepted.\n\nI will now deliberate on all evidence and statements presented. My analysis will follow shortly, after which the Administrator will be invited to issue the final ruling.\n\nBoth parties should stand by.`,
-
-    ruling: `**🔨 STAGE 4: RULING — Case #${caseRef}**\n\nDeliberation is complete. The Administrator is now prepared to issue the final, binding ruling in this matter.\n\nBoth parties are required to accept and comply with the Administrator's decision. The ruling will take immediate effect.\n\nAdministrator, this court is yours.`,
-
-    closed: `**✅ PROCEEDINGS CLOSED — Case #${caseRef}**\n\nThis dispute resolution proceeding is hereby formally closed. The ruling has been recorded and all parties have been notified.\n\nThank you for using SwapNaija's dispute resolution system. *ARIA signing off.*`,
+  const fallbackTexts = {
+    evidence: `**🔍 STAGE 2: EVIDENCE — Case #${caseRef}**\n\nOpening statements are closed. We enter formal evidence gathering.\n\n**Claimant**, present your first piece of evidence — photos, tracking numbers, receipts, or message screenshots. Explain what each piece proves.\n\n**Respondent**, you will have equal opportunity to respond with counter-evidence.\n\nThis court rules on facts. Present yours now.`,
+    ruling:   `**🔨 RULING STAGE — Case #${caseRef}**\n\nDeliberation is complete. My ruling is being prepared and will be issued momentarily. Both parties should stand by. The ruling will be final and binding.`,
+    closed:   `**✅ CASE CLOSED — Case #${caseRef}**\n\nThis proceeding is formally concluded. The ruling stands and is binding on both parties. Thank you for participating in the SwapNaija Dispute Court.\n\n*ARIA — presiding judge — signing off.*`,
   };
 
-  return announcements[newStage] || `**Stage Advanced: ${newStage.toUpperCase()}**\n\nProceedings continue. Both parties should note the new stage requirements.`;
+  return {
+    text:       fallbackTexts[newStage] || `**Stage: ${newStage.toUpperCase()} — Case #${caseRef}**\n\nProceedings continue. Parties may address the court.`,
+    directives: { advanceStage: false, ruling: null },
+  };
 };
 
-module.exports = { getAriaResponse, getAriaStageAnnouncement };
+module.exports = { getAriaResponse, getAriaStageAnnouncement, parseAriaDirectives, cleanAriaText };

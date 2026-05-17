@@ -470,17 +470,19 @@ const sendMessage = async (roomId, userId, content, messageType = 'text') => {
       emitToRoom(roomId, 'dispute:message', ariaMsg.toJSON());
 
       // ── ARIA autonomously advances stage ────────────────────────────────────
-      // Safety net: also advance if the user explicitly said "move on" etc. and
-      // the stage completion guard passes — don't rely solely on Gemini including the tag.
-      const userExplicitAdvance = detectAdvanceTrigger(allMessages);
-      const shouldAdvance = (directives.advanceStage || userExplicitAdvance)
-        && !['deliberation', 'ruling', 'closed'].includes(freshRoom.stage)
-        && isStageComplete(freshRoom.stage, allMessages, freshRoom);
+      // Two paths:
+      //   1. Explicit user request ("move on", "proceed", etc.) → bypass completion guard
+      //   2. ARIA tag present + completion guard passes           → autonomous advance
+      const blockedStages = ['deliberation', 'ruling', 'closed'];
+      if (!blockedStages.includes(freshRoom.stage)) {
+        const userExplicitAdvance = detectAdvanceTrigger(allMessages);
+        const ariaAdvance         = directives.advanceStage && isStageComplete(freshRoom.stage, allMessages, freshRoom);
 
-      if (shouldAdvance) {
-        const nextStage = await _advanceStage(roomId, freshRoom.stage);
-        if (nextStage === 'deliberation') {
-          setTimeout(() => _triggerAriaDeliberation(roomId), 8000);
+        if (userExplicitAdvance || ariaAdvance) {
+          const nextStage = await _advanceStage(roomId, freshRoom.stage);
+          if (nextStage === 'deliberation') {
+            setTimeout(() => _triggerAriaDeliberation(roomId), 8000);
+          }
         }
       }
 

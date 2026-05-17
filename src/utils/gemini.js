@@ -312,13 +312,15 @@ ${highStakes ? '\n🔴 **HIGH STAKES CASE:** Both parties have the right to appo
     }
 
     const probes = [
-      `Noted for the record. Before I allow the Respondent to respond, **Claimant** — the swap data shows ${s.initiatorShipped ? `you shipped your item (${s.initiatorShipment?.providerLabel || 'courier'} tracking: ${s.initiatorShipment?.trackingNumber || 'not recorded'})` : 'your item has NOT been marked as shipped'}. Does your dispute relate to the condition of the item received, the failure to ship, or something else? Be specific.`,
-      `Thank you. **Respondent** — you have now heard the Claimant's account. The court record shows ${s.receiverShipped ? `you shipped your item (${s.receiverShipment?.providerLabel || 'courier'} tracking: ${s.receiverShipment?.trackingNumber || 'not recorded'})` : 'no shipping record on your side'}. Give your account of events. What actually happened and when?`,
-      `Both accounts are on the record. I note the following from the objective swap data: the swap was ${s.acceptedAt ? `accepted on ${new Date(s.acceptedAt).toLocaleDateString('en-NG')}` : 'accepted at an unknown date'} and the dispute was filed on ${s.disputeRaisedAt ? new Date(s.disputeRaisedAt).toLocaleDateString('en-NG') : 'an unknown date'}. **Has either party made any attempt to resolve this directly before raising this dispute?**`,
-      `One final question for the opening stage: Is there any material fact about this swap that has NOT yet been placed before this court? Speak now — once we move to evidence, new factual claims will require supporting proof.`,
+      `Noted for the record. **Claimant** — the swap data shows ${s.initiatorShipped ? `you shipped your item (${s.initiatorShipment?.providerLabel || 'courier'} tracking: ${s.initiatorShipment?.trackingNumber || 'not recorded'})` : 'your item has NOT been marked as shipped'}. Does your dispute relate to the condition of the item received, the failure to ship, or something else? Be specific.`,
+      `Thank you. **Respondent** — the court record shows ${s.receiverShipped ? `you shipped your item (${s.receiverShipment?.providerLabel || 'courier'} tracking: ${s.receiverShipment?.trackingNumber || 'not recorded'})` : 'no shipping record on your side'}. Give your account of events. What actually happened and when?`,
+      `Both accounts are on the record. The swap was ${s.acceptedAt ? `accepted on ${new Date(s.acceptedAt).toLocaleDateString('en-NG')}` : 'accepted at an unknown date'} and the dispute was filed on ${s.disputeRaisedAt ? new Date(s.disputeRaisedAt).toLocaleDateString('en-NG') : 'an unknown date'}. **Has either party made any attempt to resolve this directly before raising this dispute?**`,
+      `Opening is now closed. This court has heard enough to proceed. Advancing to the Evidence stage — both parties should be ready to submit documentation.`,
     ];
-    const text = probes[Math.min(Math.max(partyCount - 1, 0), probes.length - 1)];
-    return { text, directives: { advanceStage: bothSpoken && partyCount >= 2, ruling: null } };
+    // Once we've cycled through all probes or both spoke, signal advance
+    const probeIdx = Math.min(Math.max(partyCount - 1, 0), probes.length - 1);
+    const autoAdvance = bothSpoken && partyCount >= 2;
+    return { text: probes[probeIdx], directives: { advanceStage: autoAdvance || probeIdx >= probes.length - 1, ruling: null } };
   }
 
   if (stage === 'evidence') {
@@ -326,13 +328,13 @@ ${highStakes ? '\n🔴 **HIGH STAKES CASE:** Both parties have the right to appo
     const prompts = [
       `**Evidence Stage — Case #${caseRef}**\n\nOpening is closed. I will now systematically gather evidence.\n\nRequired for this case:\n${checklist}\n\n**Claimant**, begin with your strongest piece of evidence. Describe it precisely — what it is, what it shows, and when it was created.`,
       `Noted. **Claimant** — the court requires photographic or documentary proof. ${s.initiatorShipped ? `You have a shipment on record (tracking: ${s.initiatorShipment?.trackingNumber || 'unrecorded'}). Provide proof that what was shipped matched what was agreed.` : 'You have no shipping record on file. Explain this.'} Submit the evidence or explain its absence.`,
-      `This court acknowledges that submission. **Respondent** — you have heard the Claimant's evidence. Respond directly to each point and present your counter-evidence. ${s.receiverShipped ? `Your shipment (tracking: ${s.receiverShipment?.trackingNumber || 'unrecorded'}) is on record. Does it support your position?` : 'Note: no shipping record exists for you in this case.'}`,
-      `Recorded. I must press both parties: the evidence checklist still has outstanding items. **Is there photographic proof of item condition at the time of dispatch?** Photos taken before packing carry the highest evidentiary weight.`,
-      `The evidence is building. I note that some claims remain unsubstantiated. Both parties should make their final evidence submissions now. Once I am satisfied, I will proceed to deliberation.`,
-      `The evidence record is sufficient for deliberation. I am closing the evidence stage.`,
+      `This court acknowledges that submission. **Respondent** — respond directly to the Claimant's evidence and present your counter-evidence. ${s.receiverShipped ? `Your shipment (tracking: ${s.receiverShipment?.trackingNumber || 'unrecorded'}) is on record. Does it support your position?` : 'Note: no shipping record exists for you in this case.'}`,
+      `Recorded. I must press both parties: is there photographic proof of item condition at the time of dispatch? Photos taken before packing carry the highest evidentiary weight. Submit your final evidence now.`,
+      `The evidence record is sufficient for deliberation. Closing the evidence stage — advancing to deliberation.`,
     ];
-    const idx  = Math.min(Math.max(partyCount - 1, 0), prompts.length - 1);
-    return { text: prompts[idx], directives: { advanceStage: partyCount >= 4 && bothSpoken, ruling: null } };
+    const idx = Math.min(Math.max(partyCount - 1, 0), prompts.length - 1);
+    const autoAdvance = (partyCount >= 4 && bothSpoken) || idx >= prompts.length - 1;
+    return { text: prompts[idx], directives: { advanceStage: autoAdvance, ruling: null } };
   }
 
   if (stage === 'deliberation') {

@@ -81,6 +81,10 @@ const swapSchema = new mongoose.Schema(
     disputeResolvedAt: Date,
     disputeAdminNote:  String,
     disputeResolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    disputeDecision: {
+      type: String,
+      enum: ['compensate_initiator', 'compensate_receiver', 'split', 'mutual_release', 'penalty_initiator', 'penalty_receiver'],
+    },
 
     // ── Value-gap top-up (Barter Credits) ────────────────────────────────────
     topUpAmountKobo: { type: Number, default: 0 },

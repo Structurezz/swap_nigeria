@@ -2,6 +2,8 @@ const DisputeRoom    = require('../../models/DisputeRoom');
 const DisputeMessage = require('../../models/DisputeMessage');
 const Swap           = require('../../models/Swap');
 const User           = require('../../models/User');
+const Payment        = require('../../models/Payment');
+const Listing        = require('../../models/Listing');
 const { getAriaResponse, getAriaStageAnnouncement } = require('../../utils/gemini');
 const { getIo } = require('../../socket');
 
@@ -10,6 +12,109 @@ const STAGE_ORDER = ['opening', 'evidence', 'deliberation', 'ruling', 'closed'];
 const emitToRoom = (roomId, event, data) => {
   const io = getIo();
   if (io) io.to(`dispute:${roomId}`).emit(event, data);
+};
+
+// ── Settle escrow and update wallets based on ruling decision ─────────────────
+// mappedDecision uses initiator/receiver terms (already mapped from ARIA's claimant/respondent).
+// Called after the DisputeRoom and Swap documents have been updated.
+const _settleEscrow = async (swap) => {
+  const decision = swap.disputeDecision; // stored on swap before calling this
+  if (!swap.escrowActive || !decision) return;
+
+  const depositKobo = swap.escrowDepositKobo || 0;
+  if (depositKobo === 0) return;
+
+  const feeKobo    = Math.round(depositKobo * 0.02);
+  const refundKobo = depositKobo - feeKobo;
+  const swapId     = swap._id;
+  const paymentDocs = [];
+
+  const credit = async (userId, amountKobo, metaType) => {
+    if (amountKobo <= 0) return;
+    await User.findByIdAndUpdate(userId, { $inc: { walletBalance: amountKobo } });
+    paymentDocs.push({
+      userId, swapId,
+      amountKobo,
+      paymentType: 'escrow',
+      status:      'refunded',
+      meta:        { type: metaType, decision },
+    });
+  };
+
+  switch (decision) {
+    // ── Both get their own deposit back (minus 2% fee each) ──────────────────
+    case 'mutual_release':
+    case 'split': {
+      if (swap.initiatorDepositPaid) await credit(swap.initiatorId, refundKobo, 'dispute_refund');
+      if (swap.receiverDepositPaid)  await credit(swap.receiverId,  refundKobo, 'dispute_refund');
+      // Refund top-up to whoever paid it
+      if (swap.topUpPaid && swap.topUpAmountKobo > 0 && swap.topUpPayerRole !== 'none') {
+        const payerId = swap.topUpPayerRole === 'initiator' ? swap.initiatorId : swap.receiverId;
+        await credit(payerId, swap.topUpAmountKobo, 'dispute_topup_refunded');
+      }
+      break;
+    }
+
+    // ── Initiator wins: gets both deposits back minus fees ───────────────────
+    case 'compensate_initiator': {
+      const won = (swap.initiatorDepositPaid ? refundKobo : 0)
+                + (swap.receiverDepositPaid  ? refundKobo : 0);
+      await credit(swap.initiatorId, won, 'dispute_compensation_won');
+      // Winner also gets the top-up regardless of who paid it
+      if (swap.topUpPaid && swap.topUpAmountKobo > 0) {
+        await credit(swap.initiatorId, swap.topUpAmountKobo, 'dispute_topup_to_winner');
+      }
+      break;
+    }
+
+    // ── Receiver wins: gets both deposits back minus fees ────────────────────
+    case 'compensate_receiver': {
+      const won = (swap.receiverDepositPaid  ? refundKobo : 0)
+                + (swap.initiatorDepositPaid ? refundKobo : 0);
+      await credit(swap.receiverId, won, 'dispute_compensation_won');
+      if (swap.topUpPaid && swap.topUpAmountKobo > 0) {
+        await credit(swap.receiverId, swap.topUpAmountKobo, 'dispute_topup_to_winner');
+      }
+      break;
+    }
+
+    // ── Initiator penalised: forfeits deposit; receiver gets own deposit back ─
+    case 'penalty_initiator': {
+      if (swap.receiverDepositPaid) await credit(swap.receiverId, refundKobo, 'dispute_innocent_refund');
+      // If initiator paid top-up (bad actor), it also goes to receiver
+      if (swap.topUpPaid && swap.topUpAmountKobo > 0) {
+        await credit(swap.receiverId, swap.topUpAmountKobo,
+          swap.topUpPayerRole === 'initiator' ? 'dispute_topup_to_innocent' : 'dispute_topup_refunded');
+      }
+      break;
+    }
+
+    // ── Receiver penalised: forfeits deposit; initiator gets own deposit back ─
+    case 'penalty_receiver': {
+      if (swap.initiatorDepositPaid) await credit(swap.initiatorId, refundKobo, 'dispute_innocent_refund');
+      if (swap.topUpPaid && swap.topUpAmountKobo > 0) {
+        await credit(swap.initiatorId, swap.topUpAmountKobo,
+          swap.topUpPayerRole === 'receiver' ? 'dispute_topup_to_innocent' : 'dispute_topup_refunded');
+      }
+      break;
+    }
+
+    default:
+      break;
+  }
+
+  if (paymentDocs.length) await Payment.insertMany(paymentDocs);
+
+  // Update listing statuses based on outcome
+  const swapCompleted = ['compensate_initiator', 'compensate_receiver'].includes(decision);
+  if (swapCompleted) {
+    if (swap.initiatorListing) await Listing.findByIdAndUpdate(swap.initiatorListing, { status: 'swapped' });
+    if (swap.receiverListing)  await Listing.findByIdAndUpdate(swap.receiverListing,  { status: 'swapped' });
+  } else {
+    // Swap voided — return listings to active so parties can re-list
+    if (swap.initiatorListing) await Listing.findByIdAndUpdate(swap.initiatorListing, { status: 'active' });
+    if (swap.receiverListing)  await Listing.findByIdAndUpdate(swap.receiverListing,  { status: 'active' });
+  }
 };
 
 // ── Stage completion guards — service-level validation for ARIA directives ─────
@@ -66,24 +171,25 @@ const _mapAriaDecision = (decision, room) => {
   return map[decision] || 'mutual_release';
 };
 
-// ── Internal: execute an ARIA-issued ruling and close the room ─────────────────
+// ── Internal: execute an ARIA-issued ruling, settle escrow, update wallets ─────
 const _executeAriaRuling = async (room, rulingData) => {
   if (!rulingData?.decision) return;
 
-  const mappedDecision   = _mapAriaDecision(rulingData.decision, room);
-  const escrowKobo       = room.swapSnapshot?.escrowDepositKobo || 0;
-  const isCompensation   = ['compensate_claimant', 'compensate_respondent'].includes(rulingData.decision);
-  const compensationKobo = isCompensation ? escrowKobo : 0;
+  const mappedDecision = _mapAriaDecision(rulingData.decision, room);
 
   const claimantIsInitiator = room.claimantId.toString() === room.initiatorId.toString();
-  const compensationRecip =
-    rulingData.decision === 'compensate_claimant'   ? (claimantIsInitiator ? 'initiator' : 'receiver')
-    : rulingData.decision === 'compensate_respondent' ? (claimantIsInitiator ? 'receiver'  : 'initiator')
+  const isCompensation      = ['compensate_initiator', 'compensate_receiver'].includes(mappedDecision);
+  const compensationRecip   =
+    mappedDecision === 'compensate_initiator' ? 'initiator'
+    : mappedDecision === 'compensate_receiver' ? 'receiver'
     : 'none';
+
+  const escrowKobo       = room.swapSnapshot?.escrowDepositKobo || 0;
+  const compensationKobo = isCompensation ? escrowKobo : 0;
 
   const rulingRecord = {
     decision:               mappedDecision,
-    penaltyAmountKobo:      rulingData.penaltyAmountKobo      || 0,
+    penaltyAmountKobo:      0,
     compensationAmountKobo: compensationKobo,
     compensationRecipient:  compensationRecip,
     adminNote:              rulingData.adminNote || 'Ruling issued by ARIA AI judge.',
@@ -92,24 +198,39 @@ const _executeAriaRuling = async (room, rulingData) => {
     ariaFormattedDecision:  rulingData.decision,
   };
 
+  const swapStatus = ['mutual_release', 'split'].includes(mappedDecision) ? 'cancelled' : 'completed';
+
+  // Update room and swap atomically (best-effort — no transaction needed here)
   await DisputeRoom.findByIdAndUpdate(room._id, {
     ruling: rulingRecord,
     stage:  'closed',
     status: 'resolved',
   });
 
+  // Store the decision on swap so _settleEscrow can read it
+  const swap = await Swap.findByIdAndUpdate(
+    room.swapId,
+    {
+      status:              swapStatus,
+      disputeDecision:     mappedDecision,
+      disputeAdminNote:    rulingData.adminNote,
+      disputeResolvedAt:   new Date(),
+      escrowReleasedAt:    new Date(),
+    },
+    { new: true },
+  ).populate('initiatorListing', '_id').populate('receiverListing', '_id');
+
   emitToRoom(room._id.toString(), 'dispute:ruled', {
     roomId:   room._id,
     decision: mappedDecision,
     stage:    'closed',
+    ruling:   rulingRecord,
   });
 
-  const swapStatus = ['mutual_release', 'split'].includes(mappedDecision) ? 'cancelled' : 'completed';
-  await Swap.findByIdAndUpdate(room.swapId, {
-    status:            swapStatus,
-    disputeAdminNote:  rulingData.adminNote,
-    disputeResolvedAt: new Date(),
-  });
+  // Settle escrow — credit wallets, record Payment docs, update listing statuses
+  if (swap) {
+    await _settleEscrow(swap);
+  }
 };
 
 // ── Internal: trigger ARIA deliberation + auto-ruling after a delay ─────────────
@@ -467,12 +588,25 @@ const issueRuling = async (roomId, adminId, rulingData) => {
     }
   }, 2000);
 
-  await Swap.findByIdAndUpdate(room.swapId, {
-    status:            decision === 'mutual_release' ? 'cancelled' : 'completed',
-    disputeAdminNote:  adminNote,
-    disputeResolvedBy: adminId,
-    disputeResolvedAt: new Date(),
-  });
+  const swapStatus = ['mutual_release', 'split'].includes(decision) ? 'cancelled' : 'completed';
+
+  const swap = await Swap.findByIdAndUpdate(
+    room.swapId,
+    {
+      status:            swapStatus,
+      disputeDecision:   decision,
+      disputeAdminNote:  adminNote,
+      disputeResolvedBy: adminId,
+      disputeResolvedAt: new Date(),
+      escrowReleasedAt:  new Date(),
+    },
+    { new: true },
+  ).populate('initiatorListing', '_id').populate('receiverListing', '_id');
+
+  // Settle escrow — credit wallets and record Payment docs
+  if (swap) {
+    await _settleEscrow(swap);
+  }
 
   return rulingRecord;
 };

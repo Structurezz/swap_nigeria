@@ -5,6 +5,7 @@ const User           = require('../../models/User');
 const Payment        = require('../../models/Payment');
 const Listing        = require('../../models/Listing');
 const { getAriaResponse, getAriaStageAnnouncement, detectAdvanceTrigger } = require('../../utils/gemini');
+const { uploadToGridFS, fileUrl } = require('../../utils/upload');
 const { getIo } = require('../../socket');
 
 const STAGE_ORDER = ['opening', 'evidence', 'deliberation', 'ruling', 'closed'];
@@ -416,7 +417,7 @@ const listRooms = async ({ page = 1, limit = 20, status, stage }) => {
 };
 
 // ── Send a message ─────────────────────────────────────────────────────────────
-const sendMessage = async (roomId, userId, content, messageType = 'text') => {
+const sendMessage = async (roomId, userId, content, messageType = 'text', attachmentMeta = null) => {
   const room = await DisputeRoom.findById(roomId);
   if (!room) throw Object.assign(new Error('Dispute room not found'), { status: 404 });
   if (room.status !== 'active') throw Object.assign(new Error('This dispute room is closed'), { status: 400 });
@@ -441,6 +442,7 @@ const sendMessage = async (roomId, userId, content, messageType = 'text') => {
     senderName:  sender.fullName,
     content,
     messageType,
+    metadata:    attachmentMeta ? { attachment: attachmentMeta } : {},
   });
 
   const populated = await DisputeMessage.findById(message._id).populate('senderId', 'fullName avatarUrl');
@@ -818,4 +820,25 @@ const _creditCounselWin = async (room, winningSide) => {
   }
 };
 
-module.exports = { openRoom, getRoom, listRooms, sendMessage, advanceStage, issueRuling, findLawyers, requestCounsel, respondToCounselRequest };
+// ── Upload evidence file for a dispute message ────────────────────────────────
+const uploadEvidence = async (roomId, userId, file) => {
+  const room = await DisputeRoom.findById(roomId);
+  if (!room) throw Object.assign(new Error('Room not found'), { status: 404 });
+  if (room.status !== 'active') throw Object.assign(new Error('Room is closed'), { status: 400 });
+
+  const uid = userId.toString();
+  const isParticipant =
+    room.initiatorId.toString()    === uid ||
+    room.receiverId.toString()     === uid  ||
+    room.claimantCounselId?.toString()   === uid ||
+    room.respondentCounselId?.toString() === uid;
+  if (!isParticipant) throw Object.assign(new Error('Not a participant'), { status: 403 });
+
+  const fileId  = await uploadToGridFS(file.buffer, file.originalname, file.mimetype);
+  const url     = fileUrl(fileId);
+  const isPdf   = file.mimetype === 'application/pdf';
+
+  return { fileId, url, filename: file.originalname, mimetype: file.mimetype, isPdf };
+};
+
+module.exports = { openRoom, getRoom, listRooms, sendMessage, advanceStage, issueRuling, findLawyers, requestCounsel, respondToCounselRequest, uploadEvidence };

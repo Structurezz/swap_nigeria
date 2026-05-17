@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const { auth, adminOnly } = require('../../middleware/auth');
+const { uploadSingle } = require('../../utils/upload');
 const c = require('./dispute.controller');
 
 // ── Room management ────────────────────────────────────────────────────────────
@@ -9,6 +10,10 @@ router.get('/swap/:swapId',            auth, c.getRoomController);
 router.post('/room/:roomId/message',   auth, c.sendMessageController);
 router.patch('/room/:roomId/advance',  auth, adminOnly, c.advanceStageController);
 router.post('/room/:roomId/ruling',    auth, adminOnly, c.issueRulingController);
+
+// ── File attachments ──────────────────────────────────────────────────────────
+// POST /dispute/room/:roomId/upload  — upload evidence file (image/PDF)
+router.post('/room/:roomId/upload', auth, uploadSingle('file'), c.uploadEvidenceController);
 
 // ── Legal counsel ──────────────────────────────────────────────────────────────
 // GET  /dispute/lawyers                       — browse legal practitioners

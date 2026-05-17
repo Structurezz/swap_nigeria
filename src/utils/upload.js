@@ -3,8 +3,9 @@ const mongoose = require('mongoose');
 const { Readable } = require('stream');
 
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) cb(null, true);
-  else cb(new Error('Only image files are allowed'), false);
+  const allowed = file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf';
+  if (allowed) cb(null, true);
+  else cb(new Error('Only image files and PDFs are allowed'), false);
 };
 
 // Keep files in memory; we write to GridFS manually after validation

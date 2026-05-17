@@ -25,8 +25,11 @@ const openRoomController = async (req, res, next) => {
 
 const sendMessageController = async (req, res, next) => {
   try {
-    const { content, messageType } = req.body;
-    const data = await svc.sendMessage(req.params.roomId, req.user.id, content, messageType);
+    const { content, messageType, attachmentUrl, attachmentFilename, attachmentIsPdf } = req.body;
+    const attachmentMeta = attachmentUrl
+      ? { url: attachmentUrl, filename: attachmentFilename || 'attachment', isPdf: Boolean(attachmentIsPdf) }
+      : null;
+    const data = await svc.sendMessage(req.params.roomId, req.user.id, content, messageType, attachmentMeta);
     res.json({ data });
   } catch (err) { next(err); }
 };
@@ -76,6 +79,14 @@ const respondCounselController = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const uploadEvidenceController = async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file provided' });
+    const data = await svc.uploadEvidence(req.params.roomId, req.user.id, req.file);
+    res.json({ data });
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   listRoomsController,
   getRoomController,
@@ -86,4 +97,5 @@ module.exports = {
   findLawyersController,
   requestCounselController,
   respondCounselController,
+  uploadEvidenceController,
 };

@@ -7,9 +7,11 @@
     "dev": "nodemon src/server.js",
     "seed": "node src/db/seed.js",
     "seed:swaps": "node src/db/seed-swaps.js",
-    "seed:user-swaps": "node src/db/seed-user-swaps.js"
+    "seed:user-swaps": "node src/db/seed-user-swaps.js",
+    "make-admin": "node src/db/make-admin.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "axios": "^1.6.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -26,6 +28,7 @@
     "nodemailer": "^8.0.7",
     "resend": "^6.12.3",
     "socket.io": "^4.6.2",
+    "socket.io-client": "^4.8.3",
     "zod": "^3.22.4"
   },
   "devDependencies": {

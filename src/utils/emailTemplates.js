@@ -34,9 +34,14 @@ const base = (body, { preheader = '' } = {}) => `<!DOCTYPE html>
       <td>
         <table cellpadding="0" cellspacing="0"><tr>
           <td style="vertical-align:middle;padding-right:10px;">
-            <a href="%%FRONTEND_URL%%">
-              <img src="%%FRONTEND_URL%%/logo.svg" alt="SN" width="36" height="36"
-                style="display:block;border-radius:8px;border:0;background:#15876A;" />
+            <a href="%%FRONTEND_URL%%" style="text-decoration:none;">
+              <table cellpadding="0" cellspacing="0"><tr>
+                <td style="width:38px;height:38px;background:rgba(255,255,255,0.2);border-radius:10px;text-align:center;vertical-align:middle;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:8px auto 0;">
+                    <path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>
+                  </svg>
+                </td>
+              </tr></table>
             </a>
           </td>
           <td style="vertical-align:middle;">

@@ -33,7 +33,7 @@ const base = (body, { preheader = '' } = {}) => `<!DOCTYPE html>
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td>
         <a href="%%FRONTEND_URL%%" style="text-decoration:none;">
-          <img src="%%FRONTEND_URL%%/swapnaija-logo.png" width="160" height="47" alt="SwapNaija" style="display:block;" />
+          <img src="https://swapnigeria.netlify.app/swapnaija-logo.png" width="160" height="47" alt="SwapNaija" style="display:block;" />
         </a>
       </td>
       <td align="right" style="font-size:11px;color:rgba(255,255,255,0.6);">Nigeria's Barter Marketplace</td>

@@ -40,14 +40,16 @@ const getStats = async () => {
       { $match: { status: 'success' } },
       { $group: { _id: '$paymentType', total: { $sum: '$amountKobo' }, count: { $sum: 1 } } },
     ]),
-    // Platform earnings ONLY = boost + verification + escrow + fee (topup goes to user wallets)
+    // Platform earnings ONLY = boost + verification + fee
+    // escrow is user collateral (held then refunded) — NOT platform income
+    // topup goes into user wallets — also NOT platform income
     Payment.aggregate([
-      { $match: { status: 'success', paymentType: { $in: ['boost', 'verification', 'escrow', 'fee'] } } },
+      { $match: { status: 'success', paymentType: { $in: ['boost', 'verification', 'fee'] } } },
       { $group: { _id: null, total: { $sum: '$amountKobo' } } },
     ]),
     // Platform earnings last 30 days
     Payment.aggregate([
-      { $match: { status: 'success', paymentType: { $in: ['boost', 'verification', 'escrow', 'fee'] }, createdAt: { $gte: thirtyDaysAgo } } },
+      { $match: { status: 'success', paymentType: { $in: ['boost', 'verification', 'fee'] }, createdAt: { $gte: thirtyDaysAgo } } },
       { $group: { _id: null, total: { $sum: '$amountKobo' } } },
     ]),
     // Total topups (user deposits — held in wallets)

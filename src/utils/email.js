@@ -18,7 +18,9 @@ const FE  = () => config.FRONTEND_URL || 'https://swapnaija.netlify.app';
 
 const logoHeader = () => `
   <div style="background:#1D9E75; border-radius:12px; padding:16px 24px; margin-bottom:24px; text-align:center;">
-    <img src="${FE()}/logo.svg" width="36" height="36" alt="SwapNaija" style="vertical-align:middle; margin-right:10px; display:inline-block;"/>
+    <table cellpadding="0" cellspacing="0" style="display:inline-table;vertical-align:middle;margin-right:10px;">
+      <tr><td style="width:36px;height:36px;background:#15876A;border-radius:8px;text-align:center;vertical-align:middle;font-family:Arial,sans-serif;font-size:13px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;">SN</td></tr>
+    </table>
     <span style="color:white; font-size:20px; font-weight:700; vertical-align:middle; display:inline-block;">SwapNaija</span>
   </div>`;
 

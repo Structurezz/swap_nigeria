@@ -91,18 +91,16 @@ const getUserDetail = async (userId) => {
 
   const Review = require('../../models/Review');
   const [listings, swaps, payments, reviews] = await Promise.all([
-    Listing.find({ userId }).sort({ createdAt: -1 }).limit(20).populate('categoryId', 'name'),
+    Listing.find({ userId }).sort({ createdAt: -1 }).populate('categoryId', 'name'),
     Swap.find({ $or: [{ initiatorId: userId }, { receiverId: userId }] })
       .sort({ createdAt: -1 })
-      .limit(20)
       .populate('initiatorId', 'fullName avatarUrl')
       .populate('receiverId', 'fullName avatarUrl')
       .populate('initiatorListing', 'title images')
       .populate('receiverListing', 'title images'),
-    Payment.find({ userId }).sort({ createdAt: -1 }).limit(20),
+    Payment.find({ userId }).sort({ createdAt: -1 }),
     Review.find({ revieweeId: userId })
       .sort({ createdAt: -1 })
-      .limit(20)
       .populate('reviewerId', 'fullName avatarUrl')
       .populate('swapId', 'status'),
   ]);

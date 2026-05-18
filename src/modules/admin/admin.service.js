@@ -13,7 +13,7 @@ const getStats = async () => {
     totalListings, activeListings, boostedListings, pausedListings,
     totalSwaps, completedSwaps, disputedSwaps, pendingSwaps, inProgressSwaps,
     totalPayments, pendingPayments, failedPayments,
-    revenueResult, revenueByTypeResult, revenue30dResult,
+    revenueByTypeResult, platformEarnResult, platformEarn30dResult, userDepositsResult,
     totalReviews, walletResult, escrowLockedResult,
   ] = await Promise.all([
     User.countDocuments(),
@@ -35,19 +35,28 @@ const getStats = async () => {
     Payment.countDocuments({ status: 'success' }),
     Payment.countDocuments({ status: 'pending' }),
     Payment.countDocuments({ status: 'failed' }),
-    Payment.aggregate([
-      { $match: { status: 'success' } },
-      { $group: { _id: null, total: { $sum: '$amountKobo' } } },
-    ]),
+    // All successful payments broken down by type (amount + count)
     Payment.aggregate([
       { $match: { status: 'success' } },
       { $group: { _id: '$paymentType', total: { $sum: '$amountKobo' }, count: { $sum: 1 } } },
     ]),
+    // Platform earnings ONLY = boost + verification + escrow + fee (topup goes to user wallets)
     Payment.aggregate([
-      { $match: { status: 'success', createdAt: { $gte: thirtyDaysAgo } } },
+      { $match: { status: 'success', paymentType: { $in: ['boost', 'verification', 'escrow', 'fee'] } } },
+      { $group: { _id: null, total: { $sum: '$amountKobo' } } },
+    ]),
+    // Platform earnings last 30 days
+    Payment.aggregate([
+      { $match: { status: 'success', paymentType: { $in: ['boost', 'verification', 'escrow', 'fee'] }, createdAt: { $gte: thirtyDaysAgo } } },
+      { $group: { _id: null, total: { $sum: '$amountKobo' } } },
+    ]),
+    // Total topups (user deposits — held in wallets)
+    Payment.aggregate([
+      { $match: { status: 'success', paymentType: 'topup' } },
       { $group: { _id: null, total: { $sum: '$amountKobo' } } },
     ]),
     require('../../models/Review').countDocuments(),
+    // Current total balance held across all user wallets
     User.aggregate([
       { $group: { _id: null, total: { $sum: '$walletBalance' } } },
     ]),
@@ -57,10 +66,11 @@ const getStats = async () => {
     ]),
   ]);
 
-  const revenueKobo = revenueResult[0]?.total || 0;
-  const walletKobo = walletResult[0]?.total || 0;
-  const revenue30dKobo = revenue30dResult[0]?.total || 0;
-  const escrowLockedKobo = escrowLockedResult[0]?.total || 0;
+  const walletKobo        = walletResult[0]?.total        || 0;
+  const platformEarnKobo  = platformEarnResult[0]?.total  || 0;
+  const platformEarn30dKobo = platformEarn30dResult[0]?.total || 0;
+  const userDepositsKobo  = userDepositsResult[0]?.total  || 0;
+  const escrowLockedKobo  = escrowLockedResult[0]?.total  || 0;
 
   const byType = {};
   for (const row of revenueByTypeResult) {
@@ -79,8 +89,11 @@ const getStats = async () => {
       total: totalPayments,
       pending: pendingPayments,
       failed: failedPayments,
-      revenueNgn: Math.round(revenueKobo / 100),
-      revenue30dNgn: Math.round(revenue30dKobo / 100),
+      // Money the company actually earns (fees — NOT topups)
+      platformEarningsNgn: Math.round(platformEarnKobo / 100),
+      platformEarnings30dNgn: Math.round(platformEarn30dKobo / 100),
+      // Total money users have deposited via topup
+      userDepositsNgn: Math.round(userDepositsKobo / 100),
       byType,
     },
     reviews: { total: totalReviews },

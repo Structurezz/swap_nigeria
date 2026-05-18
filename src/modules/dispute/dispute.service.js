@@ -7,6 +7,7 @@ const Listing        = require('../../models/Listing');
 const { getAriaResponse, getAriaStageAnnouncement, detectAdvanceTrigger } = require('../../utils/gemini');
 const { uploadToGridFS, fileUrl } = require('../../utils/upload');
 const { getIo } = require('../../socket');
+const { notifyDisputeRuled } = require('../notifications/notifications.service');
 
 const STAGE_ORDER = ['opening', 'evidence', 'deliberation', 'ruling', 'closed'];
 
@@ -656,6 +657,11 @@ const issueRuling = async (roomId, adminId, rulingData) => {
   if (swap) {
     await _settleEscrow(swap);
   }
+
+  // Non-blocking: notify both parties of the ruling
+  notifyDisputeRuled(room.swapId, rulingRecord, admin?.fullName || 'Administrator').catch((err) =>
+    console.warn('[DISPUTE] Ruling notification failed:', err.message)
+  );
 
   return rulingRecord;
 };

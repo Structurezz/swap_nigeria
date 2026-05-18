@@ -8,11 +8,19 @@ try {
     RESEND_API_KEY: process.env.RESEND_API_KEY || '',
     RESEND_FROM:    process.env.RESEND_FROM    || 'SwapNaija <noreply@usebarter.online>',
     NODE_ENV:       process.env.NODE_ENV       || 'development',
+    FRONTEND_URL:   process.env.FRONTEND_URL   || 'https://swapnaija.netlify.app',
   };
 }
 
 const getClient = () => new Resend(config.RESEND_API_KEY);
 const FROM = () => config.RESEND_FROM || 'SwapNaija <noreply@usebarter.online>';
+const FE  = () => config.FRONTEND_URL || 'https://swapnaija.netlify.app';
+
+const logoHeader = () => `
+  <div style="background:#1D9E75; border-radius:12px; padding:16px 24px; margin-bottom:24px; text-align:center;">
+    <img src="${FE()}/logo.svg" width="36" height="36" alt="SwapNaija" style="vertical-align:middle; margin-right:10px; display:inline-block;"/>
+    <span style="color:white; font-size:20px; font-weight:700; vertical-align:middle; display:inline-block;">SwapNaija</span>
+  </div>`;
 
 const sendEmail = async ({ to, subject, html, text }) => {
   if (!config.RESEND_API_KEY) {
@@ -39,9 +47,7 @@ const sendOtpEmail = async (to, code) => {
   const subject = 'Your SwapNaija OTP Code';
   const html = `
     <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-      <div style="background: #1D9E75; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">🔄 SwapNaija</h1>
-      </div>
+      ${logoHeader()}
       <h2 style="color: #1A1A1A;">Your verification code</h2>
       <p style="color: #666;">Use this code to verify your email address. It expires in 10 minutes.</p>
       <div style="background: #F0FDF9; border: 2px dashed #1D9E75; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">
@@ -57,9 +63,7 @@ const sendPasswordResetEmail = async (to, code) => {
   const subject = 'Reset your SwapNaija password';
   const html = `
     <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-      <div style="background: #1D9E75; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">🔄 SwapNaija</h1>
-      </div>
+      ${logoHeader()}
       <h2 style="color: #1A1A1A;">Reset your password</h2>
       <p style="color: #666;">Use this code to reset your password. It expires in 10 minutes.</p>
       <div style="background: #FFF8E6; border: 2px dashed #F59E0B; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">

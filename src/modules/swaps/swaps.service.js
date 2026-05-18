@@ -193,7 +193,12 @@ const respondToSwap = async (swapId, userId, action) => {
   const result = populated.toJSON();
   const otherId = isInitiator ? swap.receiverId.toString() : swap.initiatorId.toString();
   emitSwapEvent('swap:updated', [otherId], result);
-  if (newStatus === 'accepted') N.notifySwapAccepted(result).catch(() => {});
+  if (newStatus === 'accepted') {
+    N.notifySwapAccepted(result).catch(() => {});
+    if (result.topUpAmountKobo > 0 && result.topUpPayerRole && result.topUpPayerRole !== 'none') {
+      N.notifyTopUpRequired(result).catch(() => {});
+    }
+  }
   if (newStatus === 'cancelled') N.notifySwapCancelled(result, userId, prevStatus === 'proposed').catch(() => {});
   return result;
 };

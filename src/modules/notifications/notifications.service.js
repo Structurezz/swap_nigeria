@@ -266,6 +266,29 @@ const notifyWelcome = async (userId) => {
   await safeSend(email, T.welcomeEmail({ user, frontendUrl: FE() }));
 };
 
+// ─── 15. Dispute Ruled ───────────────────────────────────────────────────────
+const notifyDisputeRuled = async (swapId, ruling, adminName) => {
+  const swap = await Swap.findById(swapId)
+    .populate('initiatorId', 'fullName email phone emailPrefs')
+    .populate('receiverId',  'fullName email phone emailPrefs')
+    .lean();
+  if (!swap) return;
+
+  const initiator = swap.initiatorId;
+  const receiver  = swap.receiverId;
+
+  if (initiator?.email && wantsEmail(initiator, 'swapUpdates')) {
+    await safeSend(initiator.email, T.disputeRuled({
+      user: initiator, ruling, swap, swapId: String(swapId), adminName, frontendUrl: FE(),
+    }));
+  }
+  if (receiver?.email && wantsEmail(receiver, 'swapUpdates')) {
+    await safeSend(receiver.email, T.disputeRuled({
+      user: receiver, ruling, swap, swapId: String(swapId), adminName, frontendUrl: FE(),
+    }));
+  }
+};
+
 // ─── Daily digest builders ────────────────────────────────────────────────────
 // Returns { pendingActions, stats, daySummary, suggestions } for a given user
 const buildDigestData = async (userId) => {
@@ -438,6 +461,7 @@ module.exports = {
   notifyOnePartyConfirmed,
   notifySwapCompleted,
   notifyDisputeRaised,
+  notifyDisputeRuled,
   notifyTopUpRequired,
   notifyTopUpPaid,
   notifyWalletTopup,

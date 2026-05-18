@@ -4,16 +4,16 @@
  * Inject %%FRONTEND_URL%% via injectUrl() before sending.
  */
 
-const G = '#1D9E75';   // green
-const GL = '#E8F8F2';  // green light
-const GD = '#158A63';  // green dark
-const AM = '#F59E0B';  // amber
-const RD = '#EF4444';  // red
-const BL = '#3B82F6';  // blue
-const GR = '#6B7280';  // gray
-const DK = '#111827';  // dark
-const BG = '#F9FAFB';  // bg
-const BD = '#E5E7EB';  // border
+const G  = '#1D9E75';   // green
+const GL = '#E8F8F2';   // green light
+const GD = '#158A63';   // green dark
+const AM = '#F59E0B';   // amber
+const RD = '#EF4444';   // red
+const BL = '#3B82F6';   // blue
+const GR = '#6B7280';   // gray
+const DK = '#111827';   // dark
+const BG = '#F9FAFB';   // bg
+const BD = '#E5E7EB';   // border
 
 // ─── Base layout ──────────────────────────────────────────────────────────────
 const base = (body, { preheader = '' } = {}) => `<!DOCTYPE html>
@@ -29,10 +29,23 @@ const base = (body, { preheader = '' } = {}) => `<!DOCTYPE html>
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;">
 
   <!-- Header -->
-  <tr><td style="background:${G};border-radius:16px 16px 0 0;padding:24px 32px;">
+  <tr><td style="background:${G};border-radius:16px 16px 0 0;padding:20px 32px;">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
-      <td><a href="%%FRONTEND_URL%%" style="text-decoration:none;color:#fff;font-size:20px;font-weight:800;letter-spacing:-0.3px;">🔄 SwapNaija</a></td>
-      <td align="right" style="font-size:12px;color:rgba(255,255,255,0.7);">usebarter.online</td>
+      <td>
+        <table cellpadding="0" cellspacing="0"><tr>
+          <td style="vertical-align:middle;padding-right:10px;">
+            <a href="%%FRONTEND_URL%%">
+              <img src="%%FRONTEND_URL%%/logo.svg" alt="SN" width="36" height="36"
+                style="display:block;border-radius:8px;border:0;background:#15876A;" />
+            </a>
+          </td>
+          <td style="vertical-align:middle;">
+            <a href="%%FRONTEND_URL%%" style="text-decoration:none;color:#fff;font-size:20px;font-weight:800;letter-spacing:-0.5px;">SwapNaija</a>
+            <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:1px;letter-spacing:0.3px;">usebarter.online</div>
+          </td>
+        </tr></table>
+      </td>
+      <td align="right" style="font-size:11px;color:rgba(255,255,255,0.6);">Nigeria's Barter Marketplace</td>
     </tr></table>
   </td></tr>
 
@@ -82,10 +95,14 @@ const swapSummary = (swap, myRole) => {
   const iName = typeof swap.initiatorId === 'object' ? swap.initiatorId?.fullName : 'Proposer';
   const rName = typeof swap.receiverId  === 'object' ? swap.receiverId?.fullName  : 'Receiver';
 
-  const STATUS_COLOR = { proposed:'#3B82F6', accepted:'#1D9E75', meetup_set:'#F59E0B',
-    in_escrow:'#F59E0B', completed:'#1D9E75', cancelled:'#6B7280', disputed:'#EF4444' };
-  const STATUS_LABEL = { proposed:'Proposed', accepted:'Accepted', meetup_set:'Meetup Set',
-    in_escrow:'In Escrow', completed:'Completed ✓', cancelled:'Cancelled', disputed:'Disputed' };
+  const STATUS_COLOR = {
+    proposed:'#3B82F6', accepted:'#1D9E75', in_escrow:'#F59E0B',
+    shipped:'#8B5CF6', completed:'#1D9E75', cancelled:'#6B7280', disputed:'#EF4444',
+  };
+  const STATUS_LABEL = {
+    proposed:'Proposed', accepted:'Accepted', in_escrow:'In Escrow',
+    shipped:'Shipped 📦', completed:'Completed ✓', cancelled:'Cancelled', disputed:'Disputed',
+  };
 
   const sc = STATUS_COLOR[swap.status] || GR;
   const sl = STATUS_LABEL[swap.status] || swap.status;
@@ -188,8 +205,8 @@ const swapProposed = ({ receiver, initiator, swap, frontendUrl }) => {
     ${steps([
       [false, 'You accept or decline this proposal'],
       [false, 'Both parties pay escrow deposit (optional but recommended)'],
-      [false, 'Meet up and exchange items'],
-      [false, 'Both confirm — swap complete!'],
+      [false, 'Ship items to each other via courier'],
+      [false, 'Both confirm receipt — swap complete!'],
     ])}
 
     <div style="text-align:center;margin:24px 0 8px;">
@@ -213,7 +230,7 @@ const swapAccepted = ({ initiator, receiver, swap, frontendUrl }) => {
     <p style="margin:4px 0 20px;font-size:15px;color:${GR};line-height:1.7;">
       Great news! <strong style="color:${DK};">${receiver.fullName}</strong> has
       <span style="color:${G};font-weight:700;">accepted</span> your swap proposal.
-      Your deal is now live — choose how you want to proceed.
+      Your deal is now live — secure it with escrow and arrange delivery.
     </p>
 
     ${swapSummary(swap, 'initiator')}
@@ -222,13 +239,13 @@ const swapAccepted = ({ initiator, receiver, swap, frontendUrl }) => {
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
       <tr>
         <td style="width:48%;padding:14px;background:${GL};border:1px solid #BBF7D0;border-radius:10px;vertical-align:top;">
-          <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:${G};">🔒 With Escrow (Recommended)</p>
+          <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:${G};">🔒 Pay Escrow (Recommended)</p>
           <p style="margin:0;font-size:12px;color:${GR};line-height:1.6;">Both parties deposit ${bc(swap.escrowDepositKobo || 0)} as collateral. Refunded on completion minus 2% fee.</p>
         </td>
         <td style="width:4%;"></td>
         <td style="width:48%;padding:14px;background:#F9FAFB;border:1px solid ${BD};border-radius:10px;vertical-align:top;">
-          <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:${DK};">📍 Direct Meetup</p>
-          <p style="margin:0;font-size:12px;color:${GR};line-height:1.6;">Skip escrow — set a meetup location and time directly.</p>
+          <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:${DK};">📦 Arrange Delivery</p>
+          <p style="margin:0;font-size:12px;color:${GR};line-height:1.6;">Submit courier tracking info once escrow is active and your item is shipped.</p>
         </td>
       </tr>
     </table>
@@ -236,9 +253,9 @@ const swapAccepted = ({ initiator, receiver, swap, frontendUrl }) => {
     ${steps([
       [true,  'Proposal sent'],
       [true,  `${receiver.fullName} accepted ✓`],
-      [false, 'Pay escrow deposit OR set meetup'],
-      [false, 'Meet and complete the swap'],
-      [false, 'Both confirm — done!'],
+      [false, 'Pay escrow deposit to protect the swap'],
+      [false, 'Ship your item and submit tracking info'],
+      [false, 'Both confirm receipt — done!'],
     ])}
 
     <div style="text-align:center;margin:24px 0 8px;">
@@ -326,68 +343,70 @@ const swapCancelled = ({ user, canceller, swap, frontendUrl }) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 5. MEETUP SET → other party
+// 5. SHIPMENT SUBMITTED → other party
 // ═══════════════════════════════════════════════════════════════════════════════
-const meetupSet = ({ user, setter, swap, frontendUrl }) => {
+const shipmentSubmitted = ({ user, shipper, swap, frontendUrl }) => {
   const name = user.fullName?.split(' ')[0] || 'there';
-  const dateStr = fmtDate(swap.meetupScheduled);
-  const subject = `📍 Meetup scheduled for your swap — ${dateStr}`;
+  const subject = `📦 ${shipper?.fullName || 'Your swap partner'} has shipped your item`;
+
+  const shipmentsData = swap.initiatorShipment || swap.receiverShipment || {};
 
   const html = base(`
     ${hi(name)}
     <p style="margin:4px 0 20px;font-size:15px;color:${GR};line-height:1.7;">
-      <strong style="color:${DK};">${setter?.fullName || 'Your swap partner'}</strong> has set a meetup for your swap.
-      Mark your calendar!
+      <strong style="color:${DK};">${shipper?.fullName || 'Your swap partner'}</strong> has dispatched their item and submitted tracking info.
+      Your package is on its way — keep an eye on the tracking number below.
     </p>
 
     ${swapSummary(swap, 'receiver')}
 
-    <!-- Meetup details -->
     <div style="background:${GL};border:1px solid #6EE7B7;border-radius:14px;padding:20px;margin-bottom:20px;">
-      <p style="margin:0 0 14px;font-size:13px;font-weight:700;color:${G};text-transform:uppercase;letter-spacing:0.5px;">📅 Meetup Details</p>
-      <table cellpadding="0" cellspacing="0">
+      <p style="margin:0 0 14px;font-size:13px;font-weight:700;color:${G};text-transform:uppercase;letter-spacing:0.5px;">🚚 Shipment Details</p>
+      ${shipmentsData.trackingNumber ? `
+      <table width="100%" cellpadding="0" cellspacing="0">
         <tr>
-          <td style="padding-right:12px;font-size:20px;vertical-align:top;">📅</td>
-          <td>
-            <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:${GR};text-transform:uppercase;">Date &amp; Time</p>
-            <p style="margin:0;font-size:15px;font-weight:700;color:${DK};">${dateStr}</p>
-          </td>
+          <td style="padding:6px 0;font-size:13px;color:${GR};">Courier</td>
+          <td align="right" style="padding:6px 0;font-size:13px;font-weight:700;color:${DK};">${shipmentsData.providerLabel || 'N/A'}</td>
         </tr>
-        ${swap.meetupLocation ? `
-        <tr><td colspan="2" style="padding:8px 0 0;"></td></tr>
         <tr>
-          <td style="padding-right:12px;font-size:20px;vertical-align:top;">📍</td>
-          <td>
-            <p style="margin:0 0 2px;font-size:11px;font-weight:700;color:${GR};text-transform:uppercase;">Location</p>
-            <p style="margin:0;font-size:15px;font-weight:700;color:${DK};">${swap.meetupLocation}</p>
-          </td>
+          <td style="padding:6px 0;font-size:13px;color:${GR};">Tracking Number</td>
+          <td align="right" style="padding:6px 0;font-size:14px;font-weight:800;color:${DK};font-family:monospace;">${shipmentsData.trackingNumber}</td>
+        </tr>
+        ${shipmentsData.estimatedDelivery ? `
+        <tr>
+          <td style="padding:6px 0;font-size:13px;color:${GR};">Est. Delivery</td>
+          <td align="right" style="padding:6px 0;font-size:13px;font-weight:700;color:${G};">${fmtDate(shipmentsData.estimatedDelivery)}</td>
         </tr>` : ''}
-      </table>
+      </table>` : '<p style="margin:0;font-size:14px;color:#6B7280;">Tracking details available in the app.</p>'}
     </div>
 
     <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:14px 16px;margin-bottom:24px;">
-      <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#92400E;">⚠️ Safety checklist before meetup:</p>
+      <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#92400E;">⚠️ On delivery — important:</p>
       <ul style="margin:0;padding-left:18px;font-size:12px;color:#78350F;line-height:2.2;">
-        <li>Meet in a busy public place (shopping mall, market, etc.)</li>
-        <li>Bring a friend or tell someone where you're going</li>
-        <li>Inspect items thoroughly before confirming the swap</li>
-        <li>Do not transfer anything until you're satisfied</li>
+        <li>Inspect the item carefully when it arrives</li>
+        <li>Only confirm receipt when you are fully satisfied with the item</li>
+        <li>Raise a dispute immediately in the app if there is any issue — your escrow is protected</li>
       </ul>
     </div>
 
     ${steps([
-      [true,  'Proposal accepted'],
-      [true,  `Meetup set for ${dateStr}`],
-      [false, 'Attend meetup and exchange items'],
-      [false, 'Both confirm in the app — done!'],
+      [true,  'Proposal accepted & escrow paid'],
+      [true,  `${shipper?.fullName} shipped their item ✓`],
+      [false, 'You ship your item and submit tracking'],
+      [false, 'Both parties receive and inspect items'],
+      [false, 'Both confirm receipt — escrow refunded!'],
     ])}
 
-    <div style="text-align:center;">
-      ${btn('📋 View Swap Details', `${frontendUrl}/swaps`)}
+    <div style="text-align:center;margin:24px 0 8px;">
+      ${btn('📦 View Swap & Track Delivery', `${frontendUrl}/swaps`)}
     </div>
-  `, { preheader: `Meetup on ${dateStr} — confirm your attendance in the app` });
+  `, { preheader: `${shipper?.fullName} shipped your item — tracking info inside` });
 
-  return { subject, html, text: `Meetup set: ${dateStr} at ${swap.meetupLocation || 'TBD'}. View at ${frontendUrl}/swaps` };
+  return {
+    subject,
+    html,
+    text: `${shipper?.fullName || 'Your swap partner'} shipped your item. Track at ${frontendUrl}/swaps`,
+  };
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -459,6 +478,7 @@ const escrowActivated = ({ user, otherUser, swap, frontendUrl }) => {
     <p style="margin:4px 0 20px;font-size:15px;color:${GR};line-height:1.7;">
       Both you and <strong style="color:${DK};">${otherUser?.fullName}</strong> have paid the escrow deposit.
       Your swap is now <strong style="color:${G};">secured by SwapNaija Escrow</strong> 🛡️
+      — ship your item and submit the tracking number to continue.
     </p>
 
     ${swapSummary(swap, 'initiator')}
@@ -486,24 +506,24 @@ const escrowActivated = ({ user, otherUser, swap, frontendUrl }) => {
         ${finRow('Your deposit held', bc(swap.escrowDepositKobo || 0))}
         ${finRow('Returned on completion', bc(refund), G)}
         ${finRow('Platform fee (on completion only)', bc(fee), GR)}
-        ${finRow('If cancelled before meetup', bc(swap.escrowDepositKobo || 0) + ' full refund', G)}
+        ${finRow('If cancelled before shipping', bc(swap.escrowDepositKobo || 0) + ' full refund', G)}
       </table>
     </div>
 
     ${steps([
       [true,  'Proposal accepted'],
       [true,  'Escrow active — both parties protected'],
-      [false, 'Set a meetup location and time'],
-      [false, 'Exchange items at the meetup'],
-      [false, 'Both confirm — escrow refunded!'],
+      [false, 'Ship your item and submit tracking info'],
+      [false, 'Both parties receive and inspect items'],
+      [false, 'Both confirm receipt — escrow refunded!'],
     ])}
 
     <div style="text-align:center;">
-      ${btn('📍 Set Meetup Now', `${frontendUrl}/swaps`)}
+      ${btn('📦 Submit Shipment Now', `${frontendUrl}/swaps`)}
     </div>
-  `, { preheader: 'Escrow is live — both parties protected. Set your meetup now!' });
+  `, { preheader: 'Escrow is live — ship your item and submit tracking to continue!' });
 
-  return { subject, html, text: `Escrow active for your swap with ${otherUser?.fullName}. Set meetup at ${frontendUrl}/swaps` };
+  return { subject, html, text: `Escrow active for your swap with ${otherUser?.fullName}. Ship your item at ${frontendUrl}/swaps` };
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -511,13 +531,13 @@ const escrowActivated = ({ user, otherUser, swap, frontendUrl }) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 const onePartyConfirmed = ({ user, confirmer, swap, frontendUrl }) => {
   const name = user.fullName?.split(' ')[0] || 'there';
-  const subject = `✅ ${confirmer.fullName} confirmed the swap — your turn to confirm!`;
+  const subject = `✅ ${confirmer.fullName} confirmed receipt — your turn to confirm!`;
 
   const html = base(`
     ${hi(name)}
     <p style="margin:4px 0 20px;font-size:15px;color:${GR};line-height:1.7;">
-      <strong style="color:${DK};">${confirmer.fullName}</strong> has confirmed that the swap went through.
-      <strong>You're the last step</strong> — confirm now to complete the deal and release any escrow funds.
+      <strong style="color:${DK};">${confirmer.fullName}</strong> has confirmed they received their item.
+      <strong>You're the last step</strong> — confirm receipt now to complete the deal and release escrow funds.
     </p>
 
     ${swapSummary(swap, 'receiver')}
@@ -528,7 +548,7 @@ const onePartyConfirmed = ({ user, confirmer, swap, frontendUrl }) => {
         <td style="width:48%;padding:12px;border-radius:10px;border:2px solid ${G};text-align:center;background:${GL};">
           <p style="margin:0 0 4px;font-size:11px;color:${G};">CONFIRMED ✓</p>
           <p style="margin:0;font-size:13px;font-weight:700;color:${DK};">${confirmer.fullName}</p>
-          <p style="margin:2px 0 0;font-size:11px;color:${GR};">Already confirmed</p>
+          <p style="margin:2px 0 0;font-size:11px;color:${GR};">Item received & confirmed</p>
         </td>
         <td style="width:4%;text-align:center;font-size:18px;color:${AM};">!</td>
         <td style="width:48%;padding:12px;border-radius:10px;border:2px dashed ${AM};text-align:center;background:#FFFBEB;">
@@ -550,14 +570,14 @@ const onePartyConfirmed = ({ user, confirmer, swap, frontendUrl }) => {
     </div>` : ''}
 
     <div style="text-align:center;margin:24px 0 8px;">
-      ${btn('✅ Confirm Swap Completion', `${frontendUrl}/swaps`)}
+      ${btn('✅ Confirm Receipt', `${frontendUrl}/swaps`)}
     </div>
     <p style="text-align:center;margin:0;font-size:12px;color:${GR};">
-      Only confirm if you're satisfied with what you received.
+      Only confirm if you have received and inspected the item and are fully satisfied.
     </p>
   `, { preheader: `${confirmer.fullName} confirmed — you're the last step to completing this swap!` });
 
-  return { subject, html, text: `${confirmer.fullName} confirmed the swap. Confirm yours at ${frontendUrl}/swaps` };
+  return { subject, html, text: `${confirmer.fullName} confirmed receipt. Confirm yours at ${frontendUrl}/swaps` };
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -685,12 +705,12 @@ const topUpPaid = ({ user, payer, swap, frontendUrl }) => {
     <div style="background:${GL};border:1px solid #6EE7B7;border-radius:14px;padding:20px;margin-bottom:20px;text-align:center;">
       <p style="margin:0 0 4px;font-size:13px;color:${GR};">You'll receive on completion</p>
       <p style="margin:0;font-size:36px;font-weight:800;color:${G};">+${topBC}</p>
-      <p style="margin:4px 0 0;font-size:12px;color:${GR};">Added to your wallet when both parties confirm</p>
+      <p style="margin:4px 0 0;font-size:12px;color:${GR};">Added to your wallet when both parties confirm receipt</p>
     </div>
 
     <p style="margin:0 0 20px;font-size:14px;color:${GR};line-height:1.7;">
       All funds are held securely in escrow.
-      Complete the meetup and confirm in the app to release everything.
+      Ship your item, submit tracking info, and confirm receipt in the app to release everything.
     </p>
 
     <div style="text-align:center;">
@@ -716,8 +736,8 @@ const disputeRaised = ({ user, raiser, swap, isRaiser, frontendUrl }) => {
       <p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#991B1B;">⚠️ Dispute In Progress</p>
       <p style="margin:0;font-size:13px;color:#7F1D1D;line-height:1.7;">
         ${isRaiser
-          ? `Your dispute has been received. Our team will review it within <strong>24–48 hours</strong> and contact both parties.`
-          : `<strong>${raiser?.fullName}</strong> has raised a dispute on this swap. Our review team has been notified and will investigate both sides.`
+          ? `Your dispute has been received. An admin judge will open a court room and contact both parties within <strong>24–48 hours</strong>.`
+          : `<strong>${raiser?.fullName}</strong> has raised a dispute on this swap. An admin judge will be assigned and will investigate both sides.`
         }
       </p>
     </div>
@@ -735,24 +755,98 @@ const disputeRaised = ({ user, raiser, swap, isRaiser, frontendUrl }) => {
       <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#92400E;">🔒 Escrow is frozen</p>
       <p style="margin:0;font-size:13px;color:#78350F;">
         All escrow deposits (${bc(swap.escrowDepositKobo || 0)} × 2) are frozen until the dispute is resolved.
-        No funds will be released or refunded until our team makes a decision.
+        No funds will be released or refunded until the admin judge makes a ruling.
       </p>
     </div>` : ''}
 
     <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:${DK};">While the dispute is open:</p>
     <ul style="margin:0 0 24px;padding-left:20px;font-size:13px;color:${GR};line-height:2.2;">
-      <li>Do <strong>not</strong> transfer or hand over any items</li>
-      <li>Keep all receipts, photos, and chat records as evidence</li>
-      <li>You may be contacted by our team for your account of events</li>
+      <li>Keep all receipts, photos, tracking numbers, and chat records as evidence</li>
+      <li>You may be contacted by our admin team for your account of events</li>
       <li>Do not attempt to resolve this outside the platform</li>
+      <li>Do not ship or transfer anything further until the dispute is resolved</li>
     </ul>
 
     <div style="text-align:center;">
       ${btn('📋 View Dispute Details', `${frontendUrl}/swaps`, RD)}
     </div>
-  `, { preheader: isRaiser ? 'Dispute submitted — our team is reviewing' : `${raiser?.fullName} raised a dispute — funds frozen` });
+  `, { preheader: isRaiser ? 'Dispute submitted — our admin team is reviewing' : `${raiser?.fullName} raised a dispute — funds frozen` });
 
   return { subject, html, text: `Dispute ${isRaiser ? 'submitted' : 'raised'} on your swap. View at ${frontendUrl}/swaps` };
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 12b. DISPUTE RULED → both parties
+// ═══════════════════════════════════════════════════════════════════════════════
+const disputeRuled = ({ user, ruling, swap, swapId, adminName, frontendUrl }) => {
+  const name = user.fullName?.split(' ')[0] || 'there';
+  const caseRef = swapId?.toString().slice(-8).toUpperCase() || '';
+
+  const DECISION_LABELS = {
+    compensate_initiator: 'Compensation awarded to Initiator',
+    compensate_receiver:  'Compensation awarded to Receiver',
+    split:                'Escrow split equally between both parties',
+    mutual_release:       'Mutual release — no penalty for either party',
+    penalty_initiator:    'Penalty issued against Initiator',
+    penalty_receiver:     'Penalty issued against Receiver',
+  };
+
+  const decisionLabel = DECISION_LABELS[ruling.decision] || ruling.decision;
+  const hasCompensation = ruling.compensationAmountKobo > 0;
+  const hasPenalty      = ruling.penaltyAmountKobo > 0;
+
+  const subject = `⚖️ Dispute ruling issued — Case #${caseRef}`;
+
+  const html = base(`
+    ${hi(name)}
+    <p style="margin:4px 0 20px;font-size:15px;color:${GR};line-height:1.7;">
+      An admin judge has issued a <strong style="color:${DK};">formal ruling</strong> on your dispute.
+      This decision is final and binding. Please review the details below.
+    </p>
+
+    <!-- Ruling card -->
+    <div style="background:linear-gradient(135deg,#FFFBEB 0%,#FEF3C7 100%);border:2px solid #FCD34D;border-radius:16px;padding:24px;margin-bottom:24px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <span style="font-size:24px;">⚖️</span>
+        <div>
+          <p style="margin:0;font-size:11px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:1px;">Formal Ruling — Case #${caseRef}</p>
+          <p style="margin:4px 0 0;font-size:16px;font-weight:800;color:#78350F;">${decisionLabel}</p>
+        </div>
+      </div>
+
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;">
+        ${hasCompensation ? finRow('Compensation amount', bc(ruling.compensationAmountKobo), '#D97706') : ''}
+        ${hasPenalty      ? finRow('Penalty amount', bc(ruling.penaltyAmountKobo), RD) : ''}
+        ${finRow('Issued by', adminName || 'SwapNaija Admin', DK)}
+      </table>
+
+      ${ruling.adminNote ? `
+      <div style="background:#fff;border-radius:10px;padding:14px 16px;">
+        <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:0.5px;">Administrator's Note</p>
+        <p style="margin:0;font-size:13px;color:${DK};line-height:1.7;font-style:italic;">"${ruling.adminNote}"</p>
+      </div>` : ''}
+    </div>
+
+    ${swap?.escrowActive ? `
+    <div style="background:${GL};border:1px solid #6EE7B7;border-radius:12px;padding:16px;margin-bottom:20px;">
+      <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:${G};">💰 Escrow settlement</p>
+      <p style="margin:0;font-size:13px;color:${GR};line-height:1.7;">
+        Frozen escrow funds will be disbursed according to the ruling above.
+        Any refunds or transfers will appear in your wallet within 1–2 business days.
+      </p>
+    </div>` : ''}
+
+    <p style="margin:0 0 20px;font-size:13px;color:${GR};line-height:1.7;">
+      If you have questions about this ruling, please contact our support team via the app.
+      This proceeding is now closed — no further messages can be sent in the dispute room.
+    </p>
+
+    <div style="text-align:center;">
+      ${btn('📋 View Full Ruling', `${frontendUrl}/swaps`)}
+    </div>
+  `, { preheader: `Ruling issued for Case #${caseRef}: ${decisionLabel}` });
+
+  return { subject, html, text: `Dispute ruling issued for Case #${caseRef}: ${decisionLabel}. View at ${frontendUrl}/swaps` };
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -775,10 +869,10 @@ const welcomeEmail = ({ user, frontendUrl }) => {
     </p>
 
     ${[
-      ['1️⃣', 'List what you have', 'Add your items or services with photos — it takes 2 minutes', `${frontendUrl}/create-listing`, 'Create Listing →'],
-      ['2️⃣', 'Browse listings', 'Discover thousands of items ready to swap near you', `${frontendUrl}/listings`, 'Browse Now →'],
+      ['1️⃣', 'List what you have', 'Add your items or services with photos — it takes 2 minutes', `${frontendUrl}/create`, 'Create Listing →'],
+      ['2️⃣', 'Browse listings', 'Discover thousands of items ready to swap across Nigeria', `${frontendUrl}/listings`, 'Browse Now →'],
       ['3️⃣', 'Propose a swap', 'Found something you like? Send a proposal instantly', `${frontendUrl}/listings`, 'Start Swapping →'],
-      ['4️⃣', 'Stay protected', 'Use escrow for high-value swaps — deposits refunded on completion', `${frontendUrl}/swaps`, 'Learn More →'],
+      ['4️⃣', 'Stay protected', 'Escrow + courier delivery — all swaps are delivery-based for your safety', `${frontendUrl}/swaps`, 'Learn More →'],
     ].map(([e, t, d, l, cta]) => `
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;background:${BG};border-radius:12px;padding:0;">
         <tr>
@@ -809,7 +903,7 @@ const welcomeEmail = ({ user, frontendUrl }) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 const morningDigest = ({ user, pendingActions, frontendUrl }) => {
   const name = user.fullName?.split(' ')[0] || 'there';
-  const { pendingProposals = [], awaitingEscrow = [], upcomingMeetups = [], awaitingConfirm = [] } = pendingActions;
+  const { pendingProposals = [], awaitingEscrow = [], awaitingConfirm = [] } = pendingActions;
   const total = pendingProposals.length + awaitingEscrow.length + awaitingConfirm.length;
   const subject = total > 0
     ? `☀️ Good morning ${name}! ${total} action${total > 1 ? 's' : ''} waiting for you`
@@ -845,18 +939,8 @@ const morningDigest = ({ user, pendingActions, frontendUrl }) => {
       <table width="100%" cellpadding="0" cellspacing="0" style="padding:0 16px;">
         ${pendingProposals.slice(0, 3).map(s => row('📨', `Proposal from ${s.initiatorId?.fullName || 'Someone'}`, s.initiatorListing?.title ? `Offering: ${s.initiatorListing.title}` : 'Awaiting your response', `${frontendUrl}/swaps`)).join('')}
         ${awaitingEscrow.slice(0, 2).map(s => row('💳', `Pay escrow — ${s.otherUser?.fullName || 'partner'} already paid`, `Deposit: ${bc(s.escrowDepositKobo || 0)}`, `${frontendUrl}/swaps`)).join('')}
-        ${awaitingConfirm.slice(0, 2).map(s => row('✅', `Confirm swap with ${s.otherUser?.fullName || 'partner'}`, 'They confirmed — you\'re the last step!', `${frontendUrl}/swaps`)).join('')}
+        ${awaitingConfirm.slice(0, 2).map(s => row('✅', `Confirm receipt for swap with ${s.otherUser?.fullName || 'partner'}`, 'They confirmed — you\'re the last step!', `${frontendUrl}/swaps`)).join('')}
       </table>
-    </div>` : ''}
-
-    ${upcomingMeetups.length > 0 ? `
-    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:16px;margin-bottom:20px;">
-      <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#1D4ED8;">📅 Today's Meetups</p>
-      ${upcomingMeetups.slice(0, 2).map(s => `
-        <p style="margin:0 0 4px;font-size:13px;color:${DK};">
-          • <strong>${s.otherUser?.fullName || 'Partner'}</strong> — ${fmtDate(s.meetupScheduled)}
-          ${s.meetupLocation ? `@ ${s.meetupLocation}` : ''}
-        </p>`).join('')}
     </div>` : ''}
 
     <div style="text-align:center;margin-bottom:12px;">
@@ -865,7 +949,7 @@ const morningDigest = ({ user, pendingActions, frontendUrl }) => {
     ${hr()}
     <p style="margin:0;font-size:12px;color:${GR};text-align:center;">
       💡 <strong>Pro tip:</strong> Add photos to your listings for 3× more proposals.
-      <a href="${frontendUrl}/create-listing" style="color:${G};text-decoration:none;">List something new →</a>
+      <a href="${frontendUrl}/create" style="color:${G};text-decoration:none;">List something new →</a>
     </p>
   `, { preheader: total > 0 ? `${total} actions waiting for you today!` : 'Good morning — fresh listings are waiting' });
 
@@ -913,7 +997,7 @@ const afternoonDigest = ({ user, stats, suggestions, frontendUrl }) => {
         <tr><td style="padding:12px 16px;">
           <p style="margin:0 0 2px;font-size:13px;font-weight:700;color:${DK};">${l.title}</p>
           <p style="margin:0 0 6px;font-size:12px;color:${GR};">${l.locationState || 'Nigeria'} · ${Number(l.estimatedValue || 0).toLocaleString()} BC</p>
-          <a href="${frontendUrl}/listings/${l.id || l._id}" style="font-size:12px;font-weight:700;color:${G};text-decoration:none;">View listing →</a>
+          <a href="${frontendUrl}/listing/${l.id || l._id}" style="font-size:12px;font-weight:700;color:${G};text-decoration:none;">View listing →</a>
         </td></tr>
       </table>`).join('')}
     <div style="text-align:center;margin:12px 0 20px;">
@@ -939,7 +1023,7 @@ const nightDigest = ({ user, daySummary, frontendUrl }) => {
     'Traders who respond within 2 hours get 4× more accepted proposals.',
     'Add a detailed description to your listing — it builds buyer confidence.',
     'Verified accounts close swaps 3× faster. Verify for just 1,000 BC.',
-    'Meet in public places, inspect items before confirming. Safety first!',
+    'Always inspect items when they arrive before confirming receipt. Safety first!',
     'Top up your wallet now so you\'re ready to pay escrow instantly.',
   ];
   const tip = tips[new Date().getDay() % tips.length];
@@ -1057,7 +1141,7 @@ const escrowReminder = ({ user, otherUser, swap, frontendUrl }) => {
       <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#92400E;">⏳ Action required</p>
       <p style="margin:0;font-size:13px;color:#78350F;line-height:1.7;">
         <strong>${otherUser?.fullName || 'Your swap partner'}</strong> has already paid their escrow deposit.
-        Pay yours now to activate the swap and protect both parties.
+        Pay yours now to activate the swap and protect both parties before shipping.
       </p>
     </div>
 
@@ -1073,7 +1157,7 @@ const escrowReminder = ({ user, otherUser, swap, frontendUrl }) => {
     </div>
 
     <p style="margin:0 0 8px;font-size:13px;color:${GR};line-height:1.7;">
-      Escrow keeps both parties honest — if anything goes wrong, our dispute team will fairly resolve it.
+      Escrow keeps both parties honest — if anything goes wrong with the delivery, our dispute team will fairly resolve it.
       Your deposit is <strong>fully refunded</strong> (minus 2% fee) when the swap completes.
     </p>
 
@@ -1091,55 +1175,13 @@ const injectUrl = (tpl, frontendUrl) => ({
   html: tpl.html.replace(/%%FRONTEND_URL%%/g, frontendUrl),
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Shipment Submitted → other party
-// ═══════════════════════════════════════════════════════════════════════════════
-const shipmentSubmitted = ({ user, shipper, swap, frontendUrl }) => {
-  const name = user.fullName?.split(' ')[0] || 'there';
-  const subject = `📦 ${shipper?.fullName || 'Your swap partner'} has shipped your item`;
-
-  const html = base(`
-    ${hi(name)}
-    <p style="margin:4px 0 20px;font-size:15px;color:${GR};line-height:1.7;">
-      <strong style="color:${DK};">${shipper?.fullName || 'Your swap partner'}</strong> has dispatched their item and submitted tracking info.
-      Your package is on its way!
-    </p>
-
-    ${swapSummary(swap, 'receiver')}
-
-    <div style="background:${GL};border:1px solid #6EE7B7;border-radius:14px;padding:20px;margin-bottom:20px;">
-      <p style="margin:0 0 14px;font-size:13px;font-weight:700;color:${G};text-transform:uppercase;letter-spacing:0.5px;">🚚 Shipment Details</p>
-      ${swap.initiatorShipment?.trackingNumber || swap.receiverShipment?.trackingNumber ? `
-      <p style="margin:0 0 6px;font-size:14px;color:${DK};">
-        <strong>Courier:</strong> ${swap.initiatorShipment?.providerLabel || swap.receiverShipment?.providerLabel || 'N/A'}
-      </p>
-      <p style="margin:0;font-size:14px;color:${DK};">
-        <strong>Tracking #:</strong> ${swap.initiatorShipment?.trackingNumber || swap.receiverShipment?.trackingNumber || 'N/A'}
-      </p>` : '<p style="margin:0;font-size:14px;color:#6B7280;">Tracking details available in app.</p>'}
-    </div>
-
-    <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:14px 16px;margin-bottom:24px;">
-      <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#92400E;">⚠️ Safety reminder:</p>
-      <ul style="margin:0;padding-left:18px;font-size:12px;color:#78350F;line-height:2.2;">
-        <li>Inspect the item carefully when it arrives</li>
-        <li>Only confirm receipt when you're satisfied with the item</li>
-        <li>Raise a dispute in the app if there's any issue — your escrow funds are protected</li>
-      </ul>
-    </div>
-
-    ${cta('View Swap', '%%FRONTEND_URL%%/swaps')}
-  `);
-
-  return { subject, html };
-};
-
 module.exports = {
   swapProposed, swapAccepted, swapDeclined, swapCancelled,
-  meetupSet, shipmentSubmitted,
+  shipmentSubmitted,
   escrowDepositNeeded, escrowActivated,
   onePartyConfirmed, swapCompleted,
   topUpRequired, topUpPaid,
-  disputeRaised,
+  disputeRaised, disputeRuled,
   walletTopupSuccess, escrowReminder,
   welcomeEmail,
   morningDigest, afternoonDigest, nightDigest,

@@ -390,6 +390,9 @@ const confirmCompletion = async (swapId, userId) => {
       await Payment.insertMany([
         { userId: swap.initiatorId, swapId, amountKobo: refundKobo, paymentType: 'escrow', status: 'refunded', meta: { type: 'escrow_completion_refund', depositKobo: swap.escrowDepositKobo, platformFeeKobo } },
         { userId: swap.receiverId,  swapId, amountKobo: refundKobo, paymentType: 'escrow', status: 'refunded', meta: { type: 'escrow_completion_refund', depositKobo: swap.escrowDepositKobo, platformFeeKobo } },
+        // Platform fee record — one entry per party so the total is platformFeeKobo * 2
+        { userId: swap.initiatorId, swapId, amountKobo: platformFeeKobo, paymentType: 'fee', status: 'success', meta: { type: 'escrow_platform_fee' } },
+        { userId: swap.receiverId,  swapId, amountKobo: platformFeeKobo, paymentType: 'fee', status: 'success', meta: { type: 'escrow_platform_fee' } },
       ]);
     }
 

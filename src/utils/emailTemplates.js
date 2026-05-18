@@ -32,21 +32,9 @@ const base = (body, { preheader = '' } = {}) => `<!DOCTYPE html>
   <tr><td style="background:${G};border-radius:16px 16px 0 0;padding:20px 32px;">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td>
-        <table cellpadding="0" cellspacing="0"><tr>
-          <td style="vertical-align:middle;padding-right:10px;">
-            <a href="%%FRONTEND_URL%%" style="text-decoration:none;">
-              <table cellpadding="0" cellspacing="0"><tr>
-                <td style="width:38px;height:38px;background:rgba(255,255,255,0.2);border-radius:10px;text-align:center;vertical-align:middle;">
-                  <img src="%%FRONTEND_URL%%/logo-email.png" width="22" height="22" alt="SwapNaija" style="display:block;margin:8px auto 0;" />
-                </td>
-              </tr></table>
-            </a>
-          </td>
-          <td style="vertical-align:middle;">
-            <a href="%%FRONTEND_URL%%" style="text-decoration:none;color:#fff;font-size:20px;font-weight:800;letter-spacing:-0.5px;">SwapNaija</a>
-            <div style="font-size:10px;color:rgba(255,255,255,0.65);margin-top:1px;letter-spacing:0.3px;">usebarter.online</div>
-          </td>
-        </tr></table>
+        <a href="%%FRONTEND_URL%%" style="text-decoration:none;">
+          <img src="%%FRONTEND_URL%%/swapnaija-logo.png" width="160" height="47" alt="SwapNaija" style="display:block;" />
+        </a>
       </td>
       <td align="right" style="font-size:11px;color:rgba(255,255,255,0.6);">Nigeria's Barter Marketplace</td>
     </tr></table>

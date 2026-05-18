@@ -301,10 +301,34 @@ const logout = async (token) => {
   return { message: 'Logged out successfully' };
 };
 
+// ─── Login with password then send OTP (2-step login) ────────────────────────
+const loginAndSendOtp = async ({ email, password }) => {
+  const normalised = email.toLowerCase().trim();
+  const user = await User.findOne({ email: normalised });
+  if (!user || !user.passwordHash) {
+    throw Object.assign(new Error('Invalid email or password'), { status: 401 });
+  }
+  if (user.status === 'suspended') {
+    throw Object.assign(new Error('Account suspended. Contact support'), { status: 403 });
+  }
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) throw Object.assign(new Error('Invalid email or password'), { status: 401 });
+
+  // Credentials OK — now send OTP instead of returning tokens
+  const code = generateOtp();
+  await redisSet(`${EMAIL_OTP_PREFIX}${normalised}`, 10 * 60, code);
+  await sendOtpEmail(normalised, code);
+
+  const result = { message: 'OTP sent to your email', email: normalised };
+  if (config.NODE_ENV !== 'production') result.code = code;
+  return result;
+};
+
 module.exports = {
   sendOtp, verifyOtpAndLogin,
   sendEmailOtp, verifyEmailOtpAndLogin,
   register, loginWithEmail,
+  loginAndSendOtp,
   forgotPassword, resetPassword, changePassword,
   deleteAccount,
   refreshTokenService, logout,

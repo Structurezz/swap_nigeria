@@ -5,14 +5,14 @@ const { otpLimiter } = require('../../middleware/rateLimiter');
 const {
   sendOtpSchema, verifyOtpSchema,
   sendEmailOtpSchema, verifyEmailOtpSchema,
-  registerSchema, loginSchema,
+  registerSchema, loginSchema, loginOtpSchema,
   forgotPasswordSchema, resetPasswordSchema, changePasswordSchema,
   refreshSchema, logoutSchema,
 } = require('./auth.schema');
 const {
   sendOtpController, verifyOtpController,
   sendEmailOtpController, verifyEmailOtpController,
-  registerController, loginController,
+  registerController, loginController, loginOtpController,
   forgotPasswordController, resetPasswordController, changePasswordController,
   deleteAccountController,
   refreshController, logoutController,
@@ -29,6 +29,7 @@ router.post('/verify-email-otp', validate(verifyEmailOtpSchema), verifyEmailOtpC
 // Email / Password
 router.post('/register',        validate(registerSchema),       registerController);
 router.post('/login',           validate(loginSchema),          loginController);
+router.post('/login-otp',       otpLimiter, validate(loginOtpSchema), loginOtpController);
 router.post('/forgot-password', validate(forgotPasswordSchema), forgotPasswordController);
 router.post('/reset-password',  validate(resetPasswordSchema),  resetPasswordController);
 router.put('/change-password',  auth, validate(changePasswordSchema), changePasswordController);

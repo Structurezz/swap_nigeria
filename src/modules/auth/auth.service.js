@@ -20,6 +20,7 @@ const generateReferralCode = () => crypto.randomBytes(4).toString('hex').toUpper
 const OTP_RATE_LIMIT_PREFIX = 'otp_limit:';
 const REFRESH_TOKEN_PREFIX = 'refresh:';
 const RESET_OTP_PREFIX = 'reset_otp:';
+const EMAIL_OTP_PREFIX = 'email_otp:';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const redisGet = async (key) => { try { return await redisClient.get(key); } catch { return null; } };
@@ -81,6 +82,62 @@ const verifyOtpAndLogin = async (phone, code) => {
 
   const { accessToken, refreshToken } = await buildTokens(user);
   // Welcome email for new users — no-op if they haven't added an email yet
+  if (isNewUser) notifyWelcome(user._id).catch(() => {});
+  return { accessToken, refreshToken, user: user.toJSON(), isNewUser };
+};
+
+// ─── Email OTP ────────────────────────────────────────────────────────────────
+const sendEmailOtp = async (email) => {
+  const normalised = email.toLowerCase().trim();
+  // Rate limit: max 3 per 10 min
+  try {
+    const rlKey = `${OTP_RATE_LIMIT_PREFIX}email:${normalised}`;
+    const count = await redisClient.incr(rlKey);
+    if (count === 1) await redisClient.expire(rlKey, 10 * 60);
+    if (count > 3) {
+      const ttl = await redisClient.ttl(rlKey);
+      throw Object.assign(new Error(`Too many OTP requests. Try again in ${Math.ceil(ttl / 60)} minutes`), { status: 429 });
+    }
+  } catch (err) {
+    if (err.status === 429) throw err;
+  }
+
+  const code = generateOtp();
+  await redisSet(`${EMAIL_OTP_PREFIX}${normalised}`, 10 * 60, code);
+  await sendOtpEmail(normalised, code);
+
+  const result = { message: 'OTP sent to your email' };
+  if (config.NODE_ENV !== 'production') result.code = code;
+  return result;
+};
+
+const verifyEmailOtpAndLogin = async (email, code) => {
+  const normalised = email.toLowerCase().trim();
+  const key = `${EMAIL_OTP_PREFIX}${normalised}`;
+  const stored = await redisGet(key);
+  if (!stored || stored !== code) {
+    throw Object.assign(new Error('Invalid or expired OTP'), { status: 400 });
+  }
+  await redisDel(key);
+  try { await redisDel(`${OTP_RATE_LIMIT_PREFIX}email:${normalised}`); } catch {}
+
+  let user = await User.findOne({ email: normalised });
+  const isNewUser = !user;
+
+  if (!user) {
+    user = await User.create({
+      email: normalised,
+      status: 'active',
+      referralCode: generateReferralCode(),
+    });
+  } else if (user.status === 'suspended') {
+    throw Object.assign(new Error('Account suspended. Contact support'), { status: 403 });
+  } else {
+    if (!user.referralCode) { user.referralCode = generateReferralCode(); await user.save(); }
+    if (user.status === 'pending') { user.status = 'active'; await user.save(); }
+  }
+
+  const { accessToken, refreshToken } = await buildTokens(user);
   if (isNewUser) notifyWelcome(user._id).catch(() => {});
   return { accessToken, refreshToken, user: user.toJSON(), isNewUser };
 };
@@ -246,6 +303,7 @@ const logout = async (token) => {
 
 module.exports = {
   sendOtp, verifyOtpAndLogin,
+  sendEmailOtp, verifyEmailOtpAndLogin,
   register, loginWithEmail,
   forgotPassword, resetPassword, changePassword,
   deleteAccount,

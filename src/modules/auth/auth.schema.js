@@ -36,6 +36,15 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(8, 'New password must be at least 8 characters'),
 });
 
+const sendEmailOtpSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+const verifyEmailOtpSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  code: z.string().length(6, 'OTP must be exactly 6 digits'),
+});
+
 const refreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
@@ -46,6 +55,7 @@ const logoutSchema = z.object({
 
 module.exports = {
   sendOtpSchema, verifyOtpSchema,
+  sendEmailOtpSchema, verifyEmailOtpSchema,
   registerSchema, loginSchema,
   forgotPasswordSchema, resetPasswordSchema, changePasswordSchema,
   refreshSchema, logoutSchema,

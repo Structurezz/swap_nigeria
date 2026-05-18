@@ -12,7 +12,9 @@ const getStats = async () => {
     totalUsers, newUsers30d, newUsers7d, activeUsers, suspendedUsers, pendingUsers, verifiedUsers,
     totalListings, activeListings, boostedListings, pausedListings,
     totalSwaps, completedSwaps, disputedSwaps, pendingSwaps, inProgressSwaps,
-    totalPayments, revenueResult, totalReviews, walletResult,
+    totalPayments, pendingPayments, failedPayments,
+    revenueResult, revenueByTypeResult, revenue30dResult,
+    totalReviews, walletResult, escrowLockedResult,
   ] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
@@ -31,18 +33,39 @@ const getStats = async () => {
     Swap.countDocuments({ status: 'proposed' }),
     Swap.countDocuments({ status: { $in: ['accepted', 'in_escrow', 'shipped'] } }),
     Payment.countDocuments({ status: 'success' }),
+    Payment.countDocuments({ status: 'pending' }),
+    Payment.countDocuments({ status: 'failed' }),
     Payment.aggregate([
       { $match: { status: 'success' } },
+      { $group: { _id: null, total: { $sum: '$amountKobo' } } },
+    ]),
+    Payment.aggregate([
+      { $match: { status: 'success' } },
+      { $group: { _id: '$paymentType', total: { $sum: '$amountKobo' }, count: { $sum: 1 } } },
+    ]),
+    Payment.aggregate([
+      { $match: { status: 'success', createdAt: { $gte: thirtyDaysAgo } } },
       { $group: { _id: null, total: { $sum: '$amountKobo' } } },
     ]),
     require('../../models/Review').countDocuments(),
     User.aggregate([
       { $group: { _id: null, total: { $sum: '$walletBalance' } } },
     ]),
+    Swap.aggregate([
+      { $match: { escrowActive: true } },
+      { $group: { _id: null, total: { $sum: '$escrowDepositKobo' } } },
+    ]),
   ]);
 
   const revenueKobo = revenueResult[0]?.total || 0;
   const walletKobo = walletResult[0]?.total || 0;
+  const revenue30dKobo = revenue30dResult[0]?.total || 0;
+  const escrowLockedKobo = escrowLockedResult[0]?.total || 0;
+
+  const byType = {};
+  for (const row of revenueByTypeResult) {
+    byType[row._id] = { amountNgn: Math.round(row.total / 100), count: row.count };
+  }
 
   return {
     users: {
@@ -52,9 +75,19 @@ const getStats = async () => {
     },
     listings: { total: totalListings, active: activeListings, boosted: boostedListings, paused: pausedListings },
     swaps: { total: totalSwaps, completed: completedSwaps, disputed: disputedSwaps, pending: pendingSwaps, inProgress: inProgressSwaps },
-    payments: { total: totalPayments, revenueNgn: Math.round(revenueKobo / 100) },
+    payments: {
+      total: totalPayments,
+      pending: pendingPayments,
+      failed: failedPayments,
+      revenueNgn: Math.round(revenueKobo / 100),
+      revenue30dNgn: Math.round(revenue30dKobo / 100),
+      byType,
+    },
     reviews: { total: totalReviews },
-    wallet: { totalBalanceNgn: Math.round(walletKobo / 100) },
+    wallet: {
+      totalBalanceNgn: Math.round(walletKobo / 100),
+      escrowLockedNgn: Math.round(escrowLockedKobo / 100),
+    },
   };
 };
 

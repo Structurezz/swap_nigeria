@@ -37,9 +37,7 @@ const base = (body, { preheader = '' } = {}) => `<!DOCTYPE html>
             <a href="%%FRONTEND_URL%%" style="text-decoration:none;">
               <table cellpadding="0" cellspacing="0"><tr>
                 <td style="width:38px;height:38px;background:rgba(255,255,255,0.2);border-radius:10px;text-align:center;vertical-align:middle;">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:8px auto 0;">
-                    <path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>
-                  </svg>
+                  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAfklEQVR42s2VUQrAMAhDe0HPt4N4vpFR8GfSYmwda8A/+8A0ta2dKgCfQLu0FI63auAdAuBKwe1Apjg4NsV6VwqWRN0ZK9jyUKGSETUtQ20sDfqUzrBBhboQ9kmPoOYl5Xs0vofSKfklw/XgiRWpvcHEzMPLVqKycVuGH/eXPQN5Ciy26UJCAAAAAElFTkSuQmCC" width="22" height="22" alt="SwapNaija" style="display:block;margin:8px auto 0;" />
                 </td>
               </tr></table>
             </a>

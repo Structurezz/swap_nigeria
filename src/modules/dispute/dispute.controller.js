@@ -25,10 +25,11 @@ const openRoomController = async (req, res, next) => {
 
 const sendMessageController = async (req, res, next) => {
   try {
-    const { content, messageType, attachmentUrl, attachmentFilename, attachmentIsPdf } = req.body;
+    const { content = '', messageType, attachmentUrl, attachmentFilename, attachmentIsPdf } = req.body;
     const attachmentMeta = attachmentUrl
       ? { url: attachmentUrl, filename: attachmentFilename || 'attachment', isPdf: Boolean(attachmentIsPdf) }
       : null;
+    if (!content.trim() && !attachmentMeta) return res.status(400).json({ error: 'Message must have content or an attachment' });
     const data = await svc.sendMessage(req.params.roomId, req.user.id, content, messageType, attachmentMeta);
     res.json({ data });
   } catch (err) { next(err); }

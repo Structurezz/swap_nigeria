@@ -5,7 +5,7 @@ const disputeMessageSchema = new mongoose.Schema({
   senderId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   senderRole:  { type: String, enum: ['initiator', 'receiver', 'admin', 'bot', 'system', 'counsel_claimant', 'counsel_respondent'], required: true },
   senderName:  { type: String, required: true },
-  content:     { type: String, required: true },
+  content:     { type: String, default: '' },
   messageType: { type: String, enum: ['text', 'evidence', 'question', 'system', 'ruling', 'decision'], default: 'text' },
   metadata:    { type: mongoose.Schema.Types.Mixed, default: {} },
 }, {

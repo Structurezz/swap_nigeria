@@ -417,7 +417,7 @@ const listRooms = async ({ page = 1, limit = 20, status, stage }) => {
 };
 
 // ── Send a message ─────────────────────────────────────────────────────────────
-const sendMessage = async (roomId, userId, content, messageType = 'text', attachmentMeta = null) => {
+const sendMessage = async (roomId, userId, content = '', messageType = 'text', attachmentMeta = null) => {
   const room = await DisputeRoom.findById(roomId);
   if (!room) throw Object.assign(new Error('Dispute room not found'), { status: 404 });
   if (room.status !== 'active') throw Object.assign(new Error('This dispute room is closed'), { status: 400 });

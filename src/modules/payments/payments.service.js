@@ -336,10 +336,24 @@ const submitPremiumKyc = async (userId, { idType, idNumber, docUrl }) => {
     },
   });
 
+  // Auto-approve after 5 minutes
+  setTimeout(async () => {
+    try {
+      await User.findByIdAndUpdate(userId, {
+        'kyc.status': 'approved',
+        'kyc.reviewedAt': new Date(),
+        verification: 'premium',
+        verifiedAt: new Date(),
+      });
+    } catch (err) {
+      console.error('KYC auto-approve failed for user', userId, err.message);
+    }
+  }, 5 * 60 * 1000);
+
   const updated = await User.findById(userId);
   return {
     kyc: updated.kyc,
-    message: 'KYC submitted successfully. We will review your application within 24-48 hours.',
+    message: 'KYC submitted! Your verification is being processed.',
   };
 };
 

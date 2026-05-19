@@ -304,6 +304,45 @@ const handleWebhook = async (event, data) => {
   }
 };
 
+// ─── Submit Premium KYC ───────────────────────────────────────────────────────
+const submitPremiumKyc = async (userId, { idType, idNumber, docUrl }) => {
+  const VALID_ID_TYPES = ['nin', 'passport', 'drivers_license', 'voters_card'];
+  if (!VALID_ID_TYPES.includes(idType)) {
+    throw Object.assign(new Error('Invalid ID type'), { status: 400 });
+  }
+  if (!idNumber || idNumber.trim().length < 5) {
+    throw Object.assign(new Error('ID number is required'), { status: 400 });
+  }
+  if (!docUrl) {
+    throw Object.assign(new Error('ID document photo is required'), { status: 400 });
+  }
+
+  const user = await User.findById(userId);
+  if (!user) throw Object.assign(new Error('User not found'), { status: 404 });
+  if (user.verification === 'premium') {
+    throw Object.assign(new Error('Account already has premium verification'), { status: 409 });
+  }
+  if (user.kyc?.status === 'pending') {
+    throw Object.assign(new Error('KYC application already under review'), { status: 409 });
+  }
+
+  await User.findByIdAndUpdate(userId, {
+    kyc: {
+      idType,
+      idNumber: idNumber.trim(),
+      docUrl,
+      status: 'pending',
+      submittedAt: new Date(),
+    },
+  });
+
+  const updated = await User.findById(userId);
+  return {
+    kyc: updated.kyc,
+    message: 'KYC submitted successfully. We will review your application within 24-48 hours.',
+  };
+};
+
 // ─── Boost plan info ──────────────────────────────────────────────────────────
 const getBoostPlans = () => Object.entries(BOOST_PLANS).map(([id, p]) => ({ id, ...p }));
 
@@ -312,6 +351,7 @@ module.exports = {
   initiateTopup,
   initiateBoost,
   initiateVerification,
+  submitPremiumKyc,
   verifyPayment,
   getPaymentHistory,
   handleWebhook,

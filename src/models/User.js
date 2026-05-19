@@ -49,6 +49,17 @@ const userSchema = new mongoose.Schema(
       dailyDigest: { type: Boolean, default: true },  // morning / afternoon / night digest
       marketing:   { type: Boolean, default: false }, // promotions / news
     },
+
+    // ── Premium KYC ────────────────────────────────────────────────────────────
+    kyc: {
+      idType: { type: String, enum: ['nin', 'passport', 'drivers_license', 'voters_card'] },
+      idNumber: { type: String, maxlength: 30 },
+      docUrl: String,
+      status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+      submittedAt: Date,
+      reviewedAt: Date,
+      rejectionReason: String,
+    },
   },
   {
     timestamps: true,

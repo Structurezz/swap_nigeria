@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const {
   initializePayment, initiateTopup, initiateBoost, initiateVerification,
-  verifyPayment, getPaymentHistory, handleWebhook, getBoostPlans,
+  submitPremiumKyc, verifyPayment, getPaymentHistory, handleWebhook, getBoostPlans,
 } = require('./payments.service');
 
 let config;
@@ -37,6 +37,13 @@ const boostListingController = async (req, res, next) => {
 const verifyAccountController = async (req, res, next) => {
   try {
     const result = await initiateVerification(req.user.id);
+    res.json({ data: result });
+  } catch (err) { next(err); }
+};
+
+const submitKycController = async (req, res, next) => {
+  try {
+    const result = await submitPremiumKyc(req.user.id, req.body);
     res.json({ data: result });
   } catch (err) { next(err); }
 };
@@ -80,6 +87,7 @@ module.exports = {
   topupController,
   boostListingController,
   verifyAccountController,
+  submitKycController,
   verifyPaymentController,
   getHistoryController,
   getBoostPlansController,

@@ -38,8 +38,9 @@ const searchListingsController = async (req, res, next) => {
 
 const getMyListingsController = async (req, res, next) => {
   try {
-    const listings = await getUserListings(req.user.id, req.query.status);
-    res.json({ data: listings });
+    const { status, page = 1, limit = 12 } = req.query;
+    const result = await getUserListings(req.user.id, status, Number(page), Number(limit));
+    res.json({ data: result });
   } catch (err) { next(err); }
 };
 

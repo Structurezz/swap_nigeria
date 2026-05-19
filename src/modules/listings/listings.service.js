@@ -84,11 +84,15 @@ const searchListings = async (query) => {
   };
 };
 
-const getUserListings = async (userId, status) => {
+const getUserListings = async (userId, status, page = 1, limit = 12) => {
   const filter = { userId };
   if (status) filter.status = status;
-  const listings = await Listing.find(filter).sort({ createdAt: -1 }).populate('categoryId', 'name slug');
-  return listings.map(l => l.toJSON());
+  const skip = (page - 1) * limit;
+  const [listings, total] = await Promise.all([
+    Listing.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate('categoryId', 'name slug'),
+    Listing.countDocuments(filter),
+  ]);
+  return { listings: listings.map(l => l.toJSON()), total, page, pages: Math.ceil(total / limit) };
 };
 
 const addImages = async (listingId, userId, imageUrls) => {

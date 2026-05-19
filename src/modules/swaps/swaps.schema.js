@@ -34,7 +34,7 @@ const submitShipmentSchema = z.object({
   provider:          z.enum(DELIVERY_PROVIDERS),
   providerLabel:     z.string().min(2).max(100),
   trackingNumber:    z.string().min(3).max(100),
-  trackingUrl:       z.string().url().optional(),
+  trackingUrl:       z.string().max(500).optional(),
   estimatedDelivery: z.string().datetime().optional(),
   proofImages:       z.array(z.string().url()).max(5).optional(),
   notes:             z.string().max(500).optional(),

@@ -358,6 +358,56 @@ Reject only if: the image is clearly not an ID, the document type is completely 
   }
 };
 
+// ─── Apply a KYC verdict (shared by submit and startup re-processor) ──────────
+const KYC_DELAY_MS  = 5 * 60 * 1000; // 5 minutes
+const KYC_STALE_MS  = 7 * 60 * 1000; // consider stale after 7 minutes (restart safety)
+
+const _applyKycVerdict = (userId, verdict) => {
+  setTimeout(async () => {
+    try {
+      if (verdict.approved) {
+        await User.findByIdAndUpdate(userId, {
+          'kyc.status': 'approved',
+          'kyc.reviewedAt': new Date(),
+          verification: 'premium',
+          verifiedAt: new Date(),
+        });
+      } else {
+        await User.findByIdAndUpdate(userId, {
+          'kyc.status': 'rejected',
+          'kyc.reviewedAt': new Date(),
+          'kyc.rejectionReason': verdict.reason || 'Document could not be verified',
+        });
+      }
+    } catch (err) {
+      console.error('KYC verdict apply failed for user', userId, err.message);
+    }
+  }, KYC_DELAY_MS);
+};
+
+// ─── Re-process KYCs that were pending when server restarted ─────────────────
+const reprocessStaleKycs = async () => {
+  try {
+    const staleThreshold = new Date(Date.now() - KYC_STALE_MS);
+    const staleUsers = await User.find({
+      'kyc.status': 'pending',
+      'kyc.submittedAt': { $lt: staleThreshold },
+    }).select('_id kyc');
+
+    for (const u of staleUsers) {
+      _analyseKycWithGemini(u.kyc.docUrl, u.kyc.idType, u.kyc.idNumber)
+        .then((verdict) => _applyKycVerdict(u._id.toString(), verdict))
+        .catch((err) => console.error('Stale KYC re-process error:', err.message));
+    }
+
+    if (staleUsers.length) {
+      console.log(`[KYC] Re-processing ${staleUsers.length} stale pending KYC(s)`);
+    }
+  } catch (err) {
+    console.error('[KYC] reprocessStaleKycs error:', err.message);
+  }
+};
+
 // ─── Submit Premium KYC ───────────────────────────────────────────────────────
 const submitPremiumKyc = async (userId, { idType, idNumber, docUrl }) => {
   const VALID_ID_TYPES = ['nin', 'passport', 'drivers_license', 'voters_card'];
@@ -376,8 +426,15 @@ const submitPremiumKyc = async (userId, { idType, idNumber, docUrl }) => {
   if (user.verification === 'premium') {
     throw Object.assign(new Error('Account already has premium verification'), { status: 409 });
   }
-  if (user.kyc?.status === 'pending') {
-    throw Object.assign(new Error('KYC application already under review'), { status: 409 });
+
+  // Block only if a fresh pending exists (submitted within the stale window)
+  const freshPending =
+    user.kyc?.status === 'pending' &&
+    user.kyc?.submittedAt &&
+    Date.now() - new Date(user.kyc.submittedAt).getTime() < KYC_STALE_MS;
+
+  if (freshPending) {
+    throw Object.assign(new Error('Your KYC is already being processed. Please wait a few minutes.'), { status: 409 });
   }
 
   // Save as pending immediately
@@ -393,28 +450,7 @@ const submitPremiumKyc = async (userId, { idType, idNumber, docUrl }) => {
 
   // Run Gemini analysis now (fast), apply the verdict after 5-minute delay
   _analyseKycWithGemini(docUrl, idType, idNumber.trim())
-    .then((verdict) => {
-      setTimeout(async () => {
-        try {
-          if (verdict.approved) {
-            await User.findByIdAndUpdate(userId, {
-              'kyc.status': 'approved',
-              'kyc.reviewedAt': new Date(),
-              verification: 'premium',
-              verifiedAt: new Date(),
-            });
-          } else {
-            await User.findByIdAndUpdate(userId, {
-              'kyc.status': 'rejected',
-              'kyc.reviewedAt': new Date(),
-              'kyc.rejectionReason': verdict.reason || 'Document could not be verified',
-            });
-          }
-        } catch (err) {
-          console.error('KYC verdict apply failed for user', userId, err.message);
-        }
-      }, 5 * 60 * 1000);
-    })
+    .then((verdict) => _applyKycVerdict(userId, verdict))
     .catch((err) => console.error('KYC Gemini pipeline error:', err.message));
 
   const updated = await User.findById(userId);
@@ -433,6 +469,7 @@ module.exports = {
   initiateBoost,
   initiateVerification,
   submitPremiumKyc,
+  reprocessStaleKycs,
   verifyPayment,
   getPaymentHistory,
   handleWebhook,

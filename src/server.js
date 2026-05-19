@@ -14,6 +14,7 @@ try {
 const PORT = config.PORT || 5000;
 
 const { startScheduler } = require('./modules/notifications/notifications.scheduler');
+const { reprocessStaleKycs } = require('./modules/payments/payments.service');
 
 const start = async () => {
   await connectDB();
@@ -21,6 +22,9 @@ const start = async () => {
   const httpServer = http.createServer(app);
   initSocket(httpServer);
   startScheduler();
+
+  // Re-queue any KYCs that were pending when server last restarted
+  reprocessStaleKycs().catch(() => {});
 
   httpServer.listen(PORT, () => {
     console.log(`SwapNaija server running on port ${PORT} [${config.NODE_ENV}]`);

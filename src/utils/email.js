@@ -17,7 +17,7 @@ const FROM = () => config.RESEND_FROM || 'SwapNaija <noreply@usebarter.online>';
 const FE  = () => config.FRONTEND_URL || 'https://swapnaija.netlify.app';
 
 const logoHeader = () => `
-  <div style="background:#1D9E75; border-radius:12px; padding:16px 24px; margin-bottom:24px; text-align:center;">
+  <div style="background: #FFFFFF; border-radius:12px; padding:16px 24px; margin-bottom:24px; text-align:center;">
     <img src="https://swapnigeria.netlify.app/swapnaija-logo.png" width="160" height="47" alt="SwapNaija" style="display:inline-block;" />
   </div>`;
 

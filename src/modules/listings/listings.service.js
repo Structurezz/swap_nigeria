@@ -86,7 +86,13 @@ const searchListings = async (query) => {
 
 const getUserListings = async (userId, status, page = 1, limit = 12) => {
   const filter = { userId };
-  if (status) filter.status = status;
+  if (status) {
+    // allow comma-separated: "active,paused"
+    const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
+    filter.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
+  } else {
+    filter.status = { $nin: ['deleted', 'swapped', 'expired'] };
+  }
   const skip = (page - 1) * limit;
   const [listings, total] = await Promise.all([
     Listing.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate('categoryId', 'name slug'),

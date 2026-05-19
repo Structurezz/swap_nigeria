@@ -84,15 +84,15 @@ const searchListings = async (query) => {
   };
 };
 
-const getUserListings = async (userId, status, page = 1, limit = 12) => {
+const getUserListings = async (userId, status, page = 1, limit = 12, q) => {
   const filter = { userId };
   if (status) {
-    // allow comma-separated: "active,paused"
     const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
     filter.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
   } else {
     filter.status = { $nin: ['deleted', 'swapped', 'expired'] };
   }
+  if (q) filter.title = { $regex: q, $options: 'i' };
   const skip = (page - 1) * limit;
   const [listings, total] = await Promise.all([
     Listing.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate('categoryId', 'name slug'),

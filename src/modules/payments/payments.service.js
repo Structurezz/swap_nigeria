@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Payment = require('../../models/Payment');
 const Swap = require('../../models/Swap');
 const User = require('../../models/User');
@@ -13,6 +14,7 @@ try {
     PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY || '',
     NODE_ENV: process.env.NODE_ENV || 'development',
     FRONTEND_URL: process.env.FRONTEND_URL || 'https://swapnigeria.netlify.app',
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
   };
 }
 
@@ -304,6 +306,58 @@ const handleWebhook = async (event, data) => {
   }
 };
 
+// ─── Gemini KYC document analyser ────────────────────────────────────────────
+const ID_TYPE_LABELS = {
+  nin:             'National Identity Number (NIN) slip',
+  passport:        'International Passport',
+  drivers_license: "Driver's License",
+  voters_card:     "Voter's Card",
+};
+
+const _analyseKycWithGemini = async (docUrl, idType, idNumber) => {
+  if (!config.GEMINI_API_KEY) {
+    // No key — fall back to auto-approve
+    return { approved: true, confidence: 'high', reason: 'Auto-approved (no Gemini key configured)' };
+  }
+
+  const genAI  = new GoogleGenerativeAI(config.GEMINI_API_KEY);
+  const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+  const base64Data = docUrl.replace(/^data:image\/\w+;base64,/, '');
+  const mimeType   = docUrl.match(/^data:(image\/[\w+]+);base64,/)?.[1] || 'image/jpeg';
+
+  const prompt = `You are a KYC verification system for SwapNaija, a Nigerian barter marketplace.
+Analyse this ID document image.
+
+Claimed document type: ${ID_TYPE_LABELS[idType] || idType}
+User-provided ID number: ${idNumber}
+
+Check:
+1. Is this a valid government-issued Nigerian ID document (not a selfie, random photo, or blank image)?
+2. Does the document type match the claimed type?
+3. Does the ID number visible on the document match or closely resemble "${idNumber}"? (be lenient — partial visibility and minor formatting differences are acceptable)
+
+Respond ONLY with a valid JSON object, no markdown, no extra text:
+{"approved":true,"confidence":"high","reason":"brief explanation"}
+
+Reject only if: the image is clearly not an ID, the document type is completely wrong, or the submission looks fraudulent.`;
+
+  try {
+    const result = await model.generateContent([
+      prompt,
+      { inlineData: { data: base64Data, mimeType } },
+    ]);
+    const text      = result.response.text().trim();
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
+    if (!jsonMatch) throw new Error('No JSON in Gemini response');
+    return JSON.parse(jsonMatch[0]);
+  } catch (err) {
+    console.error('Gemini KYC analysis failed:', err.message);
+    // On Gemini failure, fall back to approve so the user isn't blocked
+    return { approved: true, confidence: 'low', reason: 'Fallback approval — Gemini unavailable' };
+  }
+};
+
 // ─── Submit Premium KYC ───────────────────────────────────────────────────────
 const submitPremiumKyc = async (userId, { idType, idNumber, docUrl }) => {
   const VALID_ID_TYPES = ['nin', 'passport', 'drivers_license', 'voters_card'];
@@ -326,6 +380,7 @@ const submitPremiumKyc = async (userId, { idType, idNumber, docUrl }) => {
     throw Object.assign(new Error('KYC application already under review'), { status: 409 });
   }
 
+  // Save as pending immediately
   await User.findByIdAndUpdate(userId, {
     kyc: {
       idType,
@@ -336,19 +391,31 @@ const submitPremiumKyc = async (userId, { idType, idNumber, docUrl }) => {
     },
   });
 
-  // Auto-approve after 5 minutes
-  setTimeout(async () => {
-    try {
-      await User.findByIdAndUpdate(userId, {
-        'kyc.status': 'approved',
-        'kyc.reviewedAt': new Date(),
-        verification: 'premium',
-        verifiedAt: new Date(),
-      });
-    } catch (err) {
-      console.error('KYC auto-approve failed for user', userId, err.message);
-    }
-  }, 5 * 60 * 1000);
+  // Run Gemini analysis now (fast), apply the verdict after 5-minute delay
+  _analyseKycWithGemini(docUrl, idType, idNumber.trim())
+    .then((verdict) => {
+      setTimeout(async () => {
+        try {
+          if (verdict.approved) {
+            await User.findByIdAndUpdate(userId, {
+              'kyc.status': 'approved',
+              'kyc.reviewedAt': new Date(),
+              verification: 'premium',
+              verifiedAt: new Date(),
+            });
+          } else {
+            await User.findByIdAndUpdate(userId, {
+              'kyc.status': 'rejected',
+              'kyc.reviewedAt': new Date(),
+              'kyc.rejectionReason': verdict.reason || 'Document could not be verified',
+            });
+          }
+        } catch (err) {
+          console.error('KYC verdict apply failed for user', userId, err.message);
+        }
+      }, 5 * 60 * 1000);
+    })
+    .catch((err) => console.error('KYC Gemini pipeline error:', err.message));
 
   const updated = await User.findById(userId);
   return {

@@ -27,6 +27,8 @@ const envSchema = z.object({
   PAYSTACK_SECRET_KEY: z.string().optional().default(''),
   PAYSTACK_PUBLIC_KEY: z.string().optional().default(''),
 
+  GEMINI_API_KEY: z.string().optional().default(''),
+
   OTP_EXPIRY_MINUTES: z.string().default('5'),
   OTP_LENGTH: z.string().default('6'),
 });
